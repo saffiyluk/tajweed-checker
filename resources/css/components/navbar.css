@@ -1,0 +1,10 @@
+.navbar {
+    background: white;
+    box-shadow: var(--box-shadow);
+    padding: 1rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+/* ... (rest of navbar styles from above) */
