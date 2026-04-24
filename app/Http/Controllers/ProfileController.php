@@ -2,125 +2,132 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use App\Models\User;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use App\Helpers\Firebase;
 
 class ProfileController extends Controller
 {
-    public function index(){
-        $user = User::all();
-        //dd($student);
-        return view('profile.show', compact('user'));
+    protected $firestore;
+    protected $storage;
+
+    public function __construct()
+    {
+        $this->middleware('auth');
+        $this->firestore = Firebase::firestore();
+        $this->storage = Firebase::storage();
     }
 
-    public function show(User $user)
+    // Show user profile
+    public function show($id)
     {
-        return view('profile.show', compact('user'));
-    }
+        $user = Auth::user(); // Or find by $id if you allow admin viewing
 
-    public function edit(User $user)
-    {
-        return view('profile.edit',compact('user'));
-    }
+        // Fetch user document from Firestore
+        $firestoreDoc = Firebase::firestore()->collection('users')->document($user->id)->snapshot();
 
-    public function update(Request $request, $id)
-    {
-        // Ensure user can only update their own profile
-        if (Auth::id() != $id) {
-            abort(403);
+        // Check if document exists
+        if ($firestoreDoc->exists()) {
+            $userData = $firestoreDoc->data(); // This is an array with fields from Firestore
+        } else {
+            $userData = []; // fallback if no Firestore doc
         }
 
-        $user = User::findOrFail($id);
+        return view('profile.show', [
+            'user' => $user,
+            'userData' => $userData,
+        ]);
+    }
 
-        // Validate input
+    // Show edit form
+    public function edit()
+    {
+        $userId = Auth::id();
+        $userDoc = $this->firestore->collection('users')->document($userId)->snapshot();
+        $userData = $userDoc->exists() ? $userDoc->data() : [];
+
+        return view('profile.edit', compact('userData'));
+    }
+
+    // Update profile info (name/email/password)
+    public function update(Request $request)
+    {
+        $user = Auth::user();
+
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'password' => 'nullable|min:8|confirmed',
-            'audio' => 'nullable|file|mimes:mp3,wav,ogg,m4a|max:51200',
         ]);
 
-        // Update fields
+        // Update MySQL Auth data
         $user->name = $request->name;
         $user->email = $request->email;
-
-        // Update password ONLY if provided
         if ($request->filled('password')) {
             $user->password = Hash::make($request->password);
         }
-
-        // Handle audio upload
-        if ($request->hasFile('audio')) {
-            // store on the public disk under 'audios'
-            $path = $request->file('audio')->store('audios', 'public');
-
-            // Optionally delete previous audio file
-            if (!empty($user->audio_path) && Storage::disk('public')->exists($user->audio_path)) {
-                Storage::disk('public')->delete($user->audio_path);
-            }
-
-            $user->audio_path = $path;
-        }
-
         $user->save();
 
-        return redirect()
-            ->route('profile.show', $user->id)
-            ->with('success', 'Profile updated successfully.');
+        // Update Firebase profile (optional extra fields)
+        $userId = $user->id;
+        $this->firestore->collection('users')->document($userId)->set([
+            'name' => $request->name,
+            'email' => $request->email,
+        ], ['merge' => true]);
+
+        return redirect()->route('profile.show')->with('success', 'Profile updated successfully.');
     }
 
-    /**
-     * Update only the user's audio from dashboard.
-     */
-    public function updateAudio(Request $request, $id)
+    // Upload/update audio
+    public function updateAudio(Request $request)
     {
-        if (Auth::id() != $id) {
-            abort(403);
-        }
-
-        $user = User::findOrFail($id);
-
         $request->validate([
             'audio' => 'required|file|mimes:mp3,wav,ogg,m4a|max:51200',
         ]);
 
-        if ($request->hasFile('audio')) {
-            $path = $request->file('audio')->store('audios', 'public');
+        $userId = Auth::id();
+        $file = $request->file('audio');
 
-            if (!empty($user->audio_path) && Storage::disk('public')->exists($user->audio_path)) {
-                Storage::disk('public')->delete($user->audio_path);
-            }
+        // Upload to Firebase Storage
+        $storagePath = "audios/{$userId}/" . $file->getClientOriginalName();
+        $stream = fopen($file->getRealPath(), 'r');
+        $this->storage->upload($stream, [
+            'name' => $storagePath,
+            'predefinedAcl' => 'publicRead' // optional: make file public
+        ]);
+        fclose($stream);
 
-            $user->audio_path = $path;
-            $user->save();
-        }
+        // Save audio path in Firestore
+        $this->firestore->collection('users')->document($userId)->set([
+            'audio_path' => $storagePath
+        ], ['merge' => true]);
 
-        return redirect()->route('home')->with('success', 'Audio uploaded successfully.');
+        return redirect()->route('profile.show')->with('success', 'Audio uploaded successfully.');
     }
 
-    public function destroy($id)
+    // Delete profile
+    public function destroy()
     {
-        // Ensure user deletes only their own account
-        if (Auth::id() != $id) {
-            abort(403);
+        $user = Auth::user();
+        $userId = $user->id;
+
+        // Delete Firebase data
+        $this->firestore->collection('users')->document($userId)->delete();
+
+        // Optionally delete audio from Storage
+        $files = $this->storage->objects(["prefix" => "audios/{$userId}/"]);
+        foreach ($files as $file) {
+            $file->delete();
         }
 
-        $user = User::findOrFail($id);
-
-        // Logout user first
+        // Delete MySQL Auth account
         Auth::logout();
-
-        // Delete user
         $user->delete();
-
-        // Invalidate session
         request()->session()->invalidate();
         request()->session()->regenerateToken();
 
-        return redirect('/')
-            ->with('success', 'Your account has been deleted.');
+        return redirect('/')->with('success', 'Your account has been deleted.');
     }
+       
 }

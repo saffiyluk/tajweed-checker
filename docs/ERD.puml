@@ -1,0 +1,52 @@
+@startuml
+title Project ERD
+
+entity users {
+  * id : bigint <<PK>>
+  name : varchar
+  email : varchar <<unique>>
+  password : varchar
+  audio_path : varchar <<nullable>>
+  created_at : timestamp
+  updated_at : timestamp
+}
+
+entity profiles {
+  * id : bigint <<PK>>
+  user_id : bigint <<FK users.id>>
+  --
+  (fields not present in repo/migrations)
+}
+
+entity audio_recitations {
+  * id : bigint <<PK>>
+  user_id : bigint <<FK users.id>>
+  audio_file_path : varchar
+  tajweed_rule : enum
+  original_filename : varchar
+  duration_seconds : integer <<nullable>>
+  firebase_url : varchar <<nullable>>
+  created_at : timestamp
+  updated_at : timestamp
+}
+
+entity analysis_results {
+  * id : bigint <<PK>>
+  audio_id : bigint <<FK audio_recitations.id>>
+  correctness : enum <<nullable>>
+  confidence_score : decimal(5,4)
+  feedback_message : text <<nullable>>
+  detected_errors : json <<nullable>>
+  suggestions : json <<nullable>>
+  processing_status : varchar
+  created_at : timestamp
+  updated_at : timestamp
+}
+
+' Note: `AudioMetadata` model maps to `analysis_results` table (alias)
+
+users ||--o{ audio_recitations : "has many"
+audio_recitations ||--|| analysis_results : "has one"
+profiles }o--|| users : "belongs to (migration not found)"
+
+@enduml

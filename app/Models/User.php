@@ -20,6 +20,7 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'role',
         'password',
         'audio_path',
     ];
@@ -43,4 +44,18 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+
+    /**
+     * Relationship: User has many audio recitations
+     */
+    public function audioRecitations()
+    {
+        return $this->hasMany(AudioRecitation::class);
+    }
+
+    // Check if user is admin
+    public function getIsAdminAttribute()
+    {
+        return $this->role === 'admin';
+    }
 }

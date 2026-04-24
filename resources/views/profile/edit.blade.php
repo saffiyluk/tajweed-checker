@@ -47,12 +47,6 @@
                             <input type="password" class="form-control" name="password_confirmation" placeholder="Confirm Password">
                         </div>
 
-                        <div class="mb-3">
-                            <label for="audio" class="form-label"><strong>Profile Audio (optional):</strong></label>
-                            <input type="file" class="form-control" name="audio" accept="audio/*">
-                            <small class="text-muted">Allowed types: mp3, wav, ogg, m4a. Max 50MB.</small>
-                        </div>
-
                         <div class="d-flex justify-content-between">
                             <a class="btn btn-secondary btn-custom btn-spacing" href="{{ route('profile.show', Auth::user()->id) }}">Back</a>
                             <button type="submit" class="btn btn-primary btn-custom">Update Profile</button>
