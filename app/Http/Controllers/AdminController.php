@@ -4,14 +4,16 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules;
-use App\Http\Requests;
-use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\AudioRecitation;
 use App\Models\AnalysisResult;
+use Symfony\Component\Process\Process;
 
 class AdminController extends Controller
 {
@@ -33,6 +35,9 @@ class AdminController extends Controller
             'todayRecitations' => AudioRecitation::whereDate('created_at', today())->count(),
             'completedAnalyses' => AnalysisResult::where('processing_status', 'completed')->count(),
             'pendingAnalyses' => AnalysisResult::where('processing_status', 'pending')->orWhere('processing_status', 'processing')->count(),
+            'pendingCorrections' => AnalysisResult::whereNotNull('correction_submitted_at')
+                ->where('correction_review_status', 'pending')
+                ->count(),
         ];
 
         // Recent activities
@@ -69,6 +74,10 @@ class AdminController extends Controller
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%");
             });
+        }
+
+        if ($request->filled('role') && in_array($request->role, ['admin', 'user'])) {
+            $query->where('role', $request->role);
         }
 
         $users = $query->latest()->paginate(20);
@@ -118,7 +127,7 @@ class AdminController extends Controller
     /**
      * Update user
      */
-    public function update(Request $request, $id)
+    public function updateUser(Request $request, $id)
     {
         $user = User::findOrFail($id);
 
@@ -186,6 +195,263 @@ class AdminController extends Controller
         $recitations = $query->latest()->paginate(20);
 
         return view('admin.recitations.index', compact('recitations'));
+    }
+
+    public function showRecitation(AudioRecitation $audioRecitation)
+    {
+        $audioRecitation->load([
+            'user',
+            'analysisResult.correctionSubmitter',
+            'analysisResult.correctionReviewer',
+        ]);
+
+        return view('admin.recitations.show', compact('audioRecitation'));
+    }
+
+    public function corrections(Request $request)
+    {
+        $query = AnalysisResult::with([
+            'audioRecitation.user',
+            'correctionSubmitter',
+            'correctionReviewer',
+        ])->whereNotNull('correction_submitted_at');
+
+        if ($request->filled('status') && in_array($request->status, ['pending', 'reviewed', 'used', 'rejected'], true)) {
+            $query->where('correction_review_status', $request->status);
+        }
+
+        if ($request->filled('rule') && in_array($request->rule, ['ikhfa', 'izhar', 'other'], true)) {
+            $query->where(function ($ruleQuery) use ($request) {
+                $ruleQuery->where('corrected_rule', $request->rule)
+                    ->orWhereHas('audioRecitation', function ($audioQuery) use ($request) {
+                        $audioQuery->where('tajweed_rule', $request->rule);
+                    });
+            });
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($searchQuery) use ($search) {
+                $searchQuery->where('corrected_transcription', 'like', "%{$search}%")
+                    ->orWhere('correction_note', 'like', "%{$search}%")
+                    ->orWhereHas('audioRecitation', function ($audioQuery) use ($search) {
+                        $audioQuery->where('original_filename', 'like', "%{$search}%")
+                            ->orWhereHas('user', function ($userQuery) use ($search) {
+                                $userQuery->where('name', 'like', "%{$search}%")
+                                    ->orWhere('email', 'like', "%{$search}%");
+                            });
+                    });
+            });
+        }
+
+        $statusCounts = AnalysisResult::whereNotNull('correction_submitted_at')
+            ->select('correction_review_status', DB::raw('COUNT(*) as total'))
+            ->groupBy('correction_review_status')
+            ->pluck('total', 'correction_review_status');
+
+        $corrections = $query->latest('correction_submitted_at')->paginate(15)->withQueryString();
+
+        return view('admin.corrections.index', compact('corrections', 'statusCounts'));
+    }
+
+    public function updateCorrection(Request $request, AnalysisResult $analysisResult)
+    {
+        $validated = $request->validate([
+            'correction_review_status' => 'required|in:pending,reviewed,used,rejected',
+            'correction_admin_note' => 'nullable|string|max:2000',
+        ]);
+
+        $analysisResult->update([
+            'correction_review_status' => $validated['correction_review_status'],
+            'correction_admin_note' => $validated['correction_admin_note'] ?? null,
+            'correction_reviewed_by' => auth()->id(),
+            'correction_reviewed_at' => now(),
+        ]);
+
+        Log::info('Admin updated Tajweed correction review', [
+            'admin_id' => auth()->id(),
+            'analysis_result_id' => $analysisResult->id,
+            'status' => $validated['correction_review_status'],
+        ]);
+
+        return redirect()
+            ->route('admin.corrections.index', $request->only(['status', 'rule', 'search']))
+            ->with('success', 'Correction review updated.');
+    }
+
+    public function datasets()
+    {
+        $datasetPath = base_path('python/dataset');
+        $classes = $this->datasetClassSummary($datasetPath);
+
+        $modelInfo = [
+            'keras_exists' => File::exists(base_path('python/tajweed_model.keras')),
+            'h5_exists' => File::exists(base_path('python/tajweed_model.h5')),
+            'updated_at' => File::exists(base_path('python/tajweed_model.keras'))
+                ? date('Y-m-d H:i', File::lastModified(base_path('python/tajweed_model.keras')))
+                : null,
+        ];
+
+        return view('admin.datasets.index', compact('classes', 'modelInfo'));
+    }
+
+    public function evaluation()
+    {
+        $datasetPath = base_path('python/dataset');
+        $classes = $this->datasetClassSummary($datasetPath);
+        $datasetCounts = collect($classes)->mapWithKeys(fn ($data, $label) => [$label => $data['count']])->all();
+
+        $featureMetrics = $this->loadModelMetrics(base_path('python/feature_model_metrics.json'));
+        $cnnMetrics = $this->loadModelMetrics(base_path('python/cnn_model_metrics.json'));
+
+        $summaryCards = [
+            'dataset_size' => array_sum($datasetCounts),
+            'class_count' => count(array_filter($datasetCounts, fn ($count) => $count > 0)),
+            'feature_accuracy' => Arr::get($featureMetrics, 'accuracy'),
+            'cnn_accuracy' => Arr::get($cnnMetrics, 'accuracy'),
+        ];
+
+        return view('admin.evaluation.index', compact(
+            'classes',
+            'datasetCounts',
+            'featureMetrics',
+            'cnnMetrics',
+            'summaryCards'
+        ));
+    }
+
+    public function uploadDataset(Request $request)
+    {
+        $request->validate([
+            'tajweed_rule' => 'required|in:ikhfa,izhar,other',
+            'dataset_files' => 'required|array|min:1',
+            'dataset_files.*' => 'file|mimetypes:audio/mpeg,audio/wav,audio/webm,audio/mp4,audio/x-wav|max:51200',
+        ]);
+
+        $targetDirectory = base_path('python/dataset/' . $request->tajweed_rule);
+        File::ensureDirectoryExists($targetDirectory);
+
+        $uploaded = 0;
+        foreach ($request->file('dataset_files', []) as $file) {
+            $extension = strtolower($file->getClientOriginalExtension() ?: 'wav');
+            $name = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+            $safeName = preg_replace('/[^A-Za-z0-9_-]/', '_', $name);
+            $filename = now()->format('Ymd_His') . '_' . uniqid() . '_' . $safeName . '.' . $extension;
+
+            $file->move($targetDirectory, $filename);
+            $uploaded++;
+        }
+
+        Log::info('Admin uploaded dataset files', [
+            'admin_id' => auth()->id(),
+            'rule' => $request->tajweed_rule,
+            'count' => $uploaded,
+        ]);
+
+        return redirect()->route('admin.datasets.index')
+            ->with('success', "{$uploaded} dataset file(s) uploaded to {$request->tajweed_rule}.");
+    }
+
+    public function retrainModel()
+    {
+        $pythonBinary = config('tajweed.python_binary', 'python');
+        $pythonPath = base_path('python');
+        $prepareScript = $pythonPath . DIRECTORY_SEPARATOR . 'prepare_data.py';
+        $trainScript = $pythonPath . DIRECTORY_SEPARATOR . 'train_cnn.py';
+        $featureTrainScript = $pythonPath . DIRECTORY_SEPARATOR . 'train_feature_model.py';
+
+        if (!File::exists($prepareScript) || !File::exists($trainScript) || !File::exists($featureTrainScript)) {
+            return redirect()->route('admin.datasets.index')
+                ->with('error', 'Training scripts are missing from the python folder.');
+        }
+
+        $process = new Process([$pythonBinary, $prepareScript], $pythonPath);
+        $process->setTimeout(300);
+        $process->setEnv($this->pythonProcessEnvironment());
+        $process->run();
+
+        if (!$process->isSuccessful()) {
+            Log::error('Dataset preparation failed', ['output' => $process->getErrorOutput() ?: $process->getOutput()]);
+
+            return redirect()->route('admin.datasets.index')
+                ->with('error', 'Dataset preparation failed. Check storage/logs/laravel.log for details.');
+        }
+
+        $featureTrainProcess = new Process([$pythonBinary, $featureTrainScript], $pythonPath);
+        $featureTrainProcess->setTimeout(1200);
+        $featureTrainProcess->setEnv($this->pythonProcessEnvironment());
+        $featureTrainProcess->run();
+
+        if (!$featureTrainProcess->isSuccessful()) {
+            Log::error('Feature model retraining failed', ['output' => $featureTrainProcess->getErrorOutput() ?: $featureTrainProcess->getOutput()]);
+
+            return redirect()->route('admin.datasets.index')
+                ->with('error', 'Feature model retraining failed. Check storage/logs/laravel.log for details.');
+        }
+
+        $trainProcess = new Process([$pythonBinary, $trainScript], $pythonPath);
+        $trainProcess->setTimeout(1200);
+        $trainProcess->setEnv($this->pythonProcessEnvironment());
+        $trainProcess->run();
+
+        if (!$trainProcess->isSuccessful()) {
+            Log::error('Model retraining failed', ['output' => $trainProcess->getErrorOutput() ?: $trainProcess->getOutput()]);
+
+            return redirect()->route('admin.datasets.index')
+                ->with('error', 'Model retraining failed. Check storage/logs/laravel.log for details.');
+        }
+
+        Log::info('Admin retrained Tajweed model', [
+            'admin_id' => auth()->id(),
+            'feature_output' => $featureTrainProcess->getOutput(),
+            'output' => $trainProcess->getOutput(),
+        ]);
+
+        return redirect()->route('admin.datasets.index')
+            ->with('success', 'Feature and CNN models retrained successfully.');
+    }
+
+    private function pythonProcessEnvironment(): array
+    {
+        $systemRoot = getenv('SystemRoot') ?: getenv('SYSTEMROOT') ?: 'C:\\Windows';
+        $path = getenv('PATH') ?: getenv('Path') ?: '';
+        $temp = getenv('TEMP') ?: sys_get_temp_dir();
+        $tmp = getenv('TMP') ?: $temp;
+        $pythonHome = storage_path('app/python-home');
+        $appData = $pythonHome . DIRECTORY_SEPARATOR . 'AppData';
+        $localAppData = $appData . DIRECTORY_SEPARATOR . 'Local';
+        $roamingAppData = $appData . DIRECTORY_SEPARATOR . 'Roaming';
+
+        foreach ([$pythonHome, $localAppData, $roamingAppData] as $directory) {
+            if (!is_dir($directory)) {
+                @mkdir($directory, 0775, true);
+            }
+        }
+
+        $windowsPythonHome = str_replace('/', '\\', $pythonHome);
+        $drive = preg_match('/^[A-Za-z]:/', $windowsPythonHome) ? substr($windowsPythonHome, 0, 2) : 'C:';
+        $homePath = preg_match('/^[A-Za-z]:(.*)$/', $windowsPythonHome, $matches) ? $matches[1] : $windowsPythonHome;
+
+        return [
+            'PATH' => $path,
+            'Path' => $path,
+            'SystemRoot' => $systemRoot,
+            'SYSTEMROOT' => $systemRoot,
+            'WINDIR' => getenv('WINDIR') ?: $systemRoot,
+            'HOME' => $pythonHome,
+            'USERPROFILE' => $pythonHome,
+            'HOMEDRIVE' => $drive,
+            'HOMEPATH' => $homePath,
+            'APPDATA' => $roamingAppData,
+            'LOCALAPPDATA' => $localAppData,
+            'KERAS_HOME' => $pythonHome . DIRECTORY_SEPARATOR . '.keras',
+            'TEMP' => $temp,
+            'TMP' => $tmp,
+            'PYTHONHASHSEED' => '0',
+            'PYTHONIOENCODING' => 'utf-8',
+            'TF_CPP_MIN_LOG_LEVEL' => '3',
+            'TF_ENABLE_ONEDNN_OPTS' => '0',
+        ];
     }
 
     //Delete recitation
@@ -352,6 +618,43 @@ class AdminController extends Controller
         ];
 
         return $tables;
+    }
+
+    private function datasetClassSummary(string $datasetPath): array
+    {
+        $classes = [];
+
+        foreach (['ikhfa', 'izhar', 'other'] as $class) {
+            $path = $datasetPath . DIRECTORY_SEPARATOR . $class;
+            $files = File::isDirectory($path)
+                ? collect(File::files($path))->filter(fn ($file) => in_array(strtolower($file->getExtension()), ['wav', 'mp3', 'webm', 'm4a', 'ogg', 'oga', 'flac', 'aac', 'mp4']))->values()
+                : collect();
+
+            $classes[$class] = [
+                'path' => $path,
+                'count' => $files->count(),
+                'latest' => $files->sortByDesc(fn ($file) => $file->getMTime())->take(5),
+            ];
+        }
+
+        return $classes;
+    }
+
+    private function loadModelMetrics(string $path): ?array
+    {
+        if (!File::exists($path)) {
+            return null;
+        }
+
+        $decoded = json_decode(File::get($path), true);
+
+        if (!is_array($decoded)) {
+            return null;
+        }
+
+        $decoded['updated_at'] = date('Y-m-d H:i', File::lastModified($path));
+
+        return $decoded;
     }
 
 }

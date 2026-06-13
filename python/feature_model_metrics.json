@@ -1,0 +1,67 @@
+{
+  "model_type": "feature",
+  "accuracy": 0.8058455114822547,
+  "classes": [
+    "ikhfa",
+    "izhar",
+    "other"
+  ],
+  "class_counts": {
+    "ikhfa": 669,
+    "izhar": 699,
+    "other": 1023
+  },
+  "train_size": 1912,
+  "test_size": 479,
+  "confusion_matrix": [
+    [
+      109,
+      10,
+      15
+    ],
+    [
+      17,
+      100,
+      23
+    ],
+    [
+      13,
+      15,
+      177
+    ]
+  ],
+  "classification_report": {
+    "ikhfa": {
+      "precision": 0.7841726618705036,
+      "recall": 0.8134328358208955,
+      "f1-score": 0.7985347985347986,
+      "support": 134.0
+    },
+    "izhar": {
+      "precision": 0.8,
+      "recall": 0.7142857142857143,
+      "f1-score": 0.7547169811320755,
+      "support": 140.0
+    },
+    "other": {
+      "precision": 0.8232558139534883,
+      "recall": 0.8634146341463415,
+      "f1-score": 0.8428571428571429,
+      "support": 205.0
+    },
+    "accuracy": 0.8058455114822547,
+    "macro avg": {
+      "precision": 0.8024761586079974,
+      "recall": 0.7970443947509837,
+      "f1-score": 0.7987029741746724,
+      "support": 479.0
+    },
+    "weighted avg": {
+      "precision": 0.8055252161818635,
+      "recall": 0.8058455114822547,
+      "f1-score": 0.8046967737951312,
+      "support": 479.0
+    }
+  },
+  "model_path": "C:\\laragon\\www\\laravel\\python\\feature_model.pkl"
+}

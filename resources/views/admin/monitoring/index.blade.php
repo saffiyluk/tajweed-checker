@@ -1,68 +1,74 @@
-@extends('layouts.app')
+@extends('layouts.admin')
+
+@section('page-title', 'System Monitoring')
+@section('page-subtitle', 'Server, database, storage, and recent log health')
 
 @section('content')
-<div class="container-fluid">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">All Users</h3>
-                    <div class="card-tools">
-                        <a href="{{ route('admin.users.create') }}" class="btn btn-sm btn-primary">
-                            <i class="fas fa-plus"></i> Add User
-                        </a>
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="admin-card h-100">
+            <div class="card-header"><h5 class="mb-0">Server</h5></div>
+            <div class="card-body">
+                @foreach($serverInfo as $label => $value)
+                    <div class="d-flex justify-content-between border-bottom py-2">
+                        <span>{{ ucwords(str_replace('_', ' ', $label)) }}</span>
+                        <strong>{{ $value }}</strong>
                     </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="admin-card h-100">
+            <div class="card-header"><h5 class="mb-0">Database</h5></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Connection</span>
+                    <strong>{{ $databaseInfo['connection'] }}</strong>
                 </div>
-                
-                <div class="card-body">
-                    <table class="table table-bordered table-striped">
-                        <thead>
-                            <tr>
-                                <th width="5%">ID</th>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Role</th>
-                                <th>Created At</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($users as $user)
-                                <tr>
-                                    <td>{{ $user->id }}</td>
-                                    <td>{{ $user->name }}</td>
-                                    <td>{{ $user->email }}</td>
-                                    <td>
-                                        @if($user->is_admin)
-                                            <span class="badge badge-success">Admin</span>
-                                        @else
-                                            <span class="badge badge-primary">User</span>
-                                        @endif
-                                    </td>
-                                    <td>{{ $user->created_at->format('Y-m-d H:i') }}</td>
-                                    <td>
-                                        <a href="{{ route('admin.users.show', $user->id) }}" class="btn btn-sm btn-info">
-                                            <i class="fas fa-eye"></i>
-                                        </a>
-                                        <a href="{{ route('admin.users.edit', $user->id) }}" class="btn btn-sm btn-primary">
-                                            <i class="fas fa-edit"></i>
-                                        </a>
-                                        <form action="{{ route('admin.users.destroy', $user->id) }}" method="POST" class="d-inline" 
-                                              onsubmit="return confirm('Are you sure?');">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="btn btn-sm btn-danger">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Name</span>
+                    <strong>{{ $databaseInfo['name'] }}</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Size</span>
+                    <strong>{{ $databaseInfo['size'] }}</strong>
+                </div>
+                @foreach($databaseInfo['tables'] as $table => $count)
+                    <div class="d-flex justify-content-between border-bottom py-2">
+                        <span>{{ $table }}</span>
+                        <strong>{{ $count }}</strong>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="admin-card h-100">
+            <div class="card-header"><h5 class="mb-0">Storage</h5></div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 18px;">
+                    <div class="progress-bar" style="width: {{ $storageInfo['usage_percentage'] }}%">{{ $storageInfo['usage_percentage'] }}%</div>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Used</span>
+                    <strong>{{ round($storageInfo['used'] / 1024 / 1024 / 1024, 2) }} GB</strong>
+                </div>
+                <div class="d-flex justify-content-between border-bottom py-2">
+                    <span>Free</span>
+                    <strong>{{ round($storageInfo['free'] / 1024 / 1024 / 1024, 2) }} GB</strong>
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="admin-card mt-4">
+    <div class="card-header"><h5 class="mb-0">Recent Logs</h5></div>
+    <div class="card-body">
+        <pre class="bg-dark text-light p-3 rounded mb-0" style="max-height: 420px; overflow: auto;">{{ implode("\n", $recentLogs) ?: 'No recent logs found.' }}</pre>
     </div>
 </div>
 @endsection

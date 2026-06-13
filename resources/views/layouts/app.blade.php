@@ -1,407 +1,260 @@
 <!doctype html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <!-- CSRF Token -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>{{ config('app.name', 'Laravel') }}</title>
+    <title>{{ config('app.name', 'Tajweed') }}</title>
 
-    <!-- Fonts -->
     <link rel="dns-prefetch" href="//fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=Poppins:300,400,500,600&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap" rel="stylesheet">
-
-    <!-- Bootstrap Icons & FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    @vite(['resources/sass/app.scss', 'resources/js/app.js'])
+    @stack('styles')
 
-    <!-- Custom CSS -->
     <style>
+        /* Global Styles with Tajweed Essence */
         :root {
-            --primary: #2563eb;
-            --primary-light: #3b82f6;
-            --secondary: #10b981;
-            --light: #f8fafc;
-            --dark: #1e293b;
-            --gray: #64748b;
-            --gray-light: #e2e8f0;
-            --border-radius: 8px;
-            --shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --tajweed-primary: #0d6efd;
+            --tajweed-green: #198754;
+            --tajweed-gold: #c1963c;
+            --tajweed-dark: #1f2a3e;
+            --tajweed-light-bg: #f8f9fa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
             font-family: 'Poppins', sans-serif;
-            background: var(--light);
-            color: var(--dark);
-            padding-top: 76px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e9edf2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            /* FIX: Added proper padding-top to account for fixed navbar */
+            padding-top: 80px;
         }
 
-        .arabic-text {
-            font-family: 'Amiri', serif;
-            direction: rtl;
-            font-size: 1.2em;
+        /* Subtle Islamic pattern overlay */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" opacity="0.02"><path fill="none" stroke="%238B7355" stroke-width="1.2" d="M400 50 L500 150 L400 250 L300 150 Z M400 250 L550 400 L400 550 L250 400 Z M400 550 L500 650 L400 750 L300 650 Z M250 400 L150 500 L250 600 L350 500 Z M550 400 L650 500 L550 600 L450 500 Z"/><circle cx="400" cy="400" r="100" stroke="%238B7355" fill="none" stroke-width="0.8"/><circle cx="400" cy="400" r="180" stroke="%238B7355" fill="none" stroke-width="0.6"/></svg>');
+            background-repeat: repeat;
+            background-size: 160px;
+            pointer-events: none;
+            z-index: -1;
         }
 
-        /* Navbar */
+        /* Navbar Styles */
         .navbar {
-            background: white;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            padding: 1rem 0;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            padding: 0.75rem 0;
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1030;
+            border-bottom: 1px solid rgba(13, 110, 253, 0.1);
         }
 
         .navbar-brand {
-            font-weight: 600;
-            color: var(--primary);
-            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--tajweed-primary) !important;
+            font-size: 1.5rem;
+            letter-spacing: -0.3px;
         }
 
         .navbar-brand i {
-            color: var(--primary);
+            color: var(--tajweed-gold);
         }
 
         .nav-link {
-            color: var(--dark);
             font-weight: 500;
+            transition: all 0.2s ease;
+            position: relative;
             padding: 0.5rem 1rem !important;
-            border-radius: var(--border-radius);
-            margin: 0 0.25rem;
         }
 
-        .nav-link:hover,
+        .nav-link:hover {
+            color: var(--tajweed-primary) !important;
+            transform: translateY(-1px);
+        }
+
         .nav-link.active {
-            color: var(--primary);
-            background: rgba(37, 99, 235, 0.1);
+            color: var(--tajweed-primary) !important;
+            background: rgba(13, 110, 253, 0.08);
+            border-radius: 40px;
+        }
+
+        .dropdown-menu {
+            border: none;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .dropdown-item {
+            border-radius: 12px;
+            transition: all 0.2s;
+            padding: 0.5rem 1rem;
+        }
+
+        .dropdown-item:hover {
+            background: rgba(13, 110, 253, 0.08);
+            transform: translateX(3px);
+        }
+
+        .dropdown-item.active {
+            background: var(--tajweed-primary);
+            color: white;
         }
 
         .user-avatar {
-            width: 36px;
-            height: 36px;
-            background: var(--primary);
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--tajweed-primary), #0b5ed7);
             color: white;
             border-radius: 50%;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            font-weight: 500;
+            font-weight: 600;
             font-size: 0.9rem;
+        }
+
+        .navbar-toggler {
+            border: none;
+            padding: 0.5rem;
+        }
+
+        .navbar-toggler i {
+            font-size: 1.5rem;
+            color: var(--tajweed-primary);
         }
 
         /* Main Content */
-        .container {
-            max-width: 1200px;
-        }
-
-        /* Header Section */
-        .page-header {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-
-        .page-header h1 {
-            color: var(--dark);
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-
-        .page-header h1 i {
-            color: var(--primary);
-        }
-
-        .page-header .lead {
-            color: var(--gray);
-            max-width: 600px;
-            margin: 0 auto 1.5rem;
-        }
-
-        .alert-warning {
-            background: #fff8e1;
-            border: 1px solid #ffecb3;
-            color: #5d4037;
-            border-radius: var(--border-radius);
-            max-width: 700px;
-            margin: 0 auto;
-        }
-
-        /* Card Styles */
-        .card {
-            border: none;
-            border-radius: var(--border-radius);
-            box-shadow: var(--shadow);
-            margin-bottom: 2rem;
-            overflow: hidden;
-        }
-
-        .card-header {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 1.25rem 1.5rem;
-            font-weight: 600;
-        }
-
-        .card-header i {
-            margin-right: 0.5rem;
-        }
-
-        .card-body {
-            padding: 1.5rem;
-        }
-
-        /* Letters Grid */
-        .letters-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-            gap: 1rem;
-            margin: 2rem 0;
-        }
-
-        .letter-card {
-            background: white;
-            border: 2px solid var(--gray-light);
-            border-radius: var(--border-radius);
-            padding: 1.5rem 1rem;
-            text-align: center;
-            transition: all 0.2s ease;
-        }
-
-        .letter-card:hover {
-            border-color: var(--primary);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
-        }
-
-        .letter-card .arabic {
-            font-size: 2.5rem;
-            color: var(--primary);
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-        }
-
-        .letter-card .name {
-            font-weight: 600;
-            color: var(--dark);
-            margin-bottom: 0.25rem;
-        }
-
-        .letter-card .makhraj {
-            font-size: 0.8rem;
-            color: var(--gray);
-            margin-bottom: 0.5rem;
-        }
-
-        .letter-card .example {
-            font-size: 0.9rem;
-            color: var(--primary);
-            font-weight: 500;
-        }
-
-        /* Pronunciation Steps */
-        .step {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 1.5rem;
-        }
-
-        .step-number {
-            width: 36px;
-            height: 36px;
-            background: var(--primary);
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 600;
-            margin-right: 1rem;
-            flex-shrink: 0;
-        }
-
-        .step-content h5 {
-            color: var(--dark);
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
-
-        .step-content p {
-            color: var(--gray);
-            margin: 0;
-        }
-
-        /* Audio Examples */
-        .audio-example {
-            border: 1px solid var(--gray-light);
-            border-radius: var(--border-radius);
-            padding: 1rem;
-            margin-bottom: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: all 0.2s ease;
-        }
-
-        .audio-example:hover {
-            border-color: var(--primary);
-            background: rgba(37, 99, 235, 0.05);
-        }
-
-        .audio-example .content {
-            flex: 1;
-        }
-
-        .audio-example .arabic-text {
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 0.25rem;
-        }
-
-        .audio-example .translation {
-            color: var(--gray);
-            font-size: 0.9rem;
-        }
-
-        .btn-play {
-            background: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }
-
-        .btn-play:hover {
-            background: var(--primary-light);
-            transform: scale(1.1);
-        }
-
-        /* Table */
-        .table {
-            margin: 0;
-        }
-
-        .table thead th {
-            background: #f1f5f9;
-            border-bottom: 2px solid var(--gray-light);
-            color: var(--dark);
-            font-weight: 600;
-            padding: 1rem;
-        }
-
-        .table tbody tr {
-            border-bottom: 1px solid var(--gray-light);
-        }
-
-        .table tbody tr:hover {
-            background: rgba(37, 99, 235, 0.05);
-        }
-
-        .table tbody td {
-            padding: 1rem;
-            vertical-align: middle;
-        }
-
-        .badge {
-            padding: 0.375rem 0.75rem;
-            font-weight: 500;
-        }
-
-        /* Recording Section */
-        .recording-section {
-            background: white;
-            border-radius: var(--border-radius);
-            padding: 2rem;
-            box-shadow: var(--shadow);
-        }
-
-        .btn-record {
-            padding: 0.75rem 2rem;
-            font-weight: 500;
-        }
-
-        .timer {
-            font-family: monospace;
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--primary);
-            text-align: center;
-            margin: 1rem 0;
-        }
-
-        /* File Upload */
-        .file-upload {
-            border: 2px dashed var(--gray-light);
-            border-radius: var(--border-radius);
-            padding: 3rem 2rem;
-            text-align: center;
-            background: white;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .file-upload:hover {
-            border-color: var(--primary);
-            background: rgba(37, 99, 235, 0.05);
-        }
-
-        .file-upload i {
-            font-size: 3rem;
-            color: var(--gray);
-            margin-bottom: 1rem;
-        }
-
-        /* Responsive */
-        @media (max-width: 768px) {
-            .letters-container {
-                grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            }
-
-            .navbar-nav {
-                padding: 1rem 0;
-            }
-
-            .nav-link {
-                margin: 0.25rem 0;
-            }
+        main {
+            flex: 1 0 auto;
         }
 
         /* Footer */
         footer {
-            background: var(--dark);
-            color: white;
-            padding: 2rem 0;
-            margin-top: 4rem;
+            background: linear-gradient(135deg, #1a2634 0%, #1f2a3a 100%);
+            color: #e0e0e0;
+            padding: 2rem 0 1.5rem;
+            margin-top: auto;
+            flex-shrink: 0;
+            position: relative;
+            border-top: 1px solid rgba(193, 150, 60, 0.2);
         }
 
-        footer a {
-            color: #94a3b8;
-            text-decoration: none;
+        footer::before {
+            content: "۞";
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+            font-size: 4rem;
+            opacity: 0.03;
+            font-family: serif;
+            pointer-events: none;
         }
 
-        footer a:hover {
+        footer h5 {
+            color: var(--tajweed-gold);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        footer h5 i {
+            margin-right: 0.5rem;
+        }
+
+        footer .text-muted {
+            color: #9aaebf !important;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            body {
+                padding-top: 70px;
+            }
+            
+            footer {
+                text-align: center;
+            }
+            
+            footer .col-md-6:last-child {
+                margin-top: 0.75rem;
+                text-align: center !important;
+            }
+        }
+
+        /* Dropdown animation */
+        .dropdown-menu {
+            display: block;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s ease;
+        }
+
+        .dropdown-menu.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        /* Scroll to top button */
+        .scroll-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--tajweed-primary);
             color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 99;
+        }
+
+        .scroll-top.visible {
+            opacity: 1;
         }
     </style>
 </head>
-
 <body>
-    <!-- Navbar -->
+    @php
+        $tajweedRoutes = ['tajweed.ikhfa-haqiqi', 'tajweed.izhar-halqi'];
+    @endphp
+
     <nav class="navbar navbar-expand-lg fixed-top">
         <div class="container">
-            <a class="navbar-brand" href="{{ url('home') }}">
+            <a class="navbar-brand" href="{{ route('home') }}">
                 <i class="fas fa-quran me-2"></i>{{ config('app.name', 'Tajweed') }}
             </a>
 
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                 <i class="fas fa-bars"></i>
             </button>
 
@@ -413,52 +266,56 @@
                                 <i class="fas fa-home me-1"></i> Home
                             </a>
                         </li>
+
                         <li class="nav-item">
                             <a class="nav-link {{ request()->routeIs('tajweed.history') ? 'active' : '' }}"
                                 href="{{ route('tajweed.history') }}">
                                 <i class="fas fa-history me-1"></i> My Recitations
                             </a>
                         </li>
+
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle {{ request()->routeIs(['tajweed.ikhfa-haqiqi', 'tajweed.izhar-halqi']) ? 'active' : '' }}"
-                                href="#" id="testDropdown" data-bs-toggle="dropdown">
+                            <a class="nav-link dropdown-toggle {{ request()->routeIs($tajweedRoutes) ? 'active' : '' }}"
+                                href="#" id="testDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-microphone me-1"></i> Test Tajweed
                             </a>
-                            <div class="dropdown-menu">
+
+                            <div class="dropdown-menu" aria-labelledby="testDropdown">
                                 <a class="dropdown-item {{ request()->routeIs('tajweed.ikhfa-haqiqi') ? 'active' : '' }}"
                                     href="{{ route('tajweed.ikhfa-haqiqi') }}">
                                     <i class="fas fa-volume-down me-2"></i> Ikhfa Haqiqi
                                 </a>
+
                                 <a class="dropdown-item {{ request()->routeIs('tajweed.izhar-halqi') ? 'active' : '' }}"
                                     href="{{ route('tajweed.izhar-halqi') }}">
                                     <i class="fas fa-volume-up me-2"></i> Izhar Halqi
                                 </a>
                             </div>
                         </li>
-                         @auth
-                            <li class="nav-item">
-                                <a class="nav-link {{ request()->routeIs('recite.quran') ? 'active' : '' }}"
-                                    href="{{ route('recite.quran') }}">
-                                    <i class="fas fa-book-quran me-1"></i> Recite Quran
-                                </a>
-                            </li>
-                        @endauth 
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" data-bs-toggle="dropdown">
-                                <div class="d-flex align-items-center">
-                                    <div class="user-avatar me-2">
-                                        {{ substr(Auth::user()->name, 0, 1) }}
-                                    </div>
-                                    <div class="d-none d-md-block">
-                                        <small class="d-block">{{ Auth::user()->name }}</small>
-                                    </div>
-                                </div>
+
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('recite.quran') ? 'active' : '' }}"
+                                href="{{ route('recite.quran') }}">
+                                <i class="fas fa-book-quran me-1"></i> Recite Quran
                             </a>
-                            <div class="dropdown-menu dropdown-menu-end">
+                        </li>
+
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="d-flex align-items-center">
+                                    <span class="user-avatar me-2">{{ substr(Auth::user()->name, 0, 1) }}</span>
+                                    <small class="d-none d-md-block">{{ Auth::user()->name }}</small>
+                                </span>
+                            </a>
+
+                            <div class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
                                 <a class="dropdown-item" href="{{ route('profile.show', Auth::user()->id) }}">
                                     <i class="fas fa-user me-2"></i> Profile
                                 </a>
+
                                 <div class="dropdown-divider"></div>
+
                                 <a class="dropdown-item" href="{{ route('logout') }}"
                                     onclick="event.preventDefault(); document.getElementById('logout-form').submit();">
                                     <i class="fas fa-sign-out-alt me-2"></i> Logout
@@ -471,6 +328,7 @@
                                 <i class="fas fa-sign-in-alt me-1"></i> Login
                             </a>
                         </li>
+
                         <li class="nav-item">
                             <a class="nav-link" href="{{ route('register') }}">
                                 <i class="fas fa-user-plus me-1"></i> Register
@@ -482,35 +340,56 @@
         </div>
     </nav>
 
-    <!-- Logout Form -->
     <form id="logout-form" action="{{ route('logout') }}" method="POST" class="d-none">
         @csrf
     </form>
 
-    <!-- Main Content -->
     <main class="container py-4">
         @yield('content')
     </main>
 
-    <!-- Footer -->
     <footer>
         <div class="container">
-            <div class="row">
+            <div class="row align-items-center">
                 <div class="col-md-6">
-                    <h5><i class="fas fa-quran me-2"></i>{{ config('app.name') }}</h5>
-                    <p class="text-muted mb-0">AI-Powered Tajweed Mastery</p>
+                    <h5><i class="fas fa-quran me-2"></i>{{ config('app.name', 'Tajweed') }}</h5>
+                    <p class="text-muted mb-0">AI-Powered Tajweed Mastery | Perfect Your Recitation</p>
                 </div>
+
                 <div class="col-md-6 text-md-end">
-                    <p class="text-muted mb-0">&copy; 2026 {{ config('app.name') }}. All rights reserved.</p>
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-heart me-1" style="color: #c1963c;"></i>
+                        &copy; {{ date('Y') }} {{ config('app.name') }}. All rights reserved.
+                    </p>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Scroll to top button -->
+    <div class="scroll-top" id="scrollTop">
+        <i class="fas fa-arrow-up"></i>
+    </div>
 
     @stack('scripts')
-</body>
 
+    <script>
+        // Scroll to top functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const scrollBtn = document.getElementById('scrollTop');
+            
+            window.addEventListener('scroll', function() {
+                if (window.scrollY > 300) {
+                    scrollBtn.classList.add('visible');
+                } else {
+                    scrollBtn.classList.remove('visible');
+                }
+            });
+            
+            scrollBtn.addEventListener('click', function() {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+        });
+    </script>
+</body>
 </html>

@@ -3,6 +3,12 @@
 @section('title', 'Tajweed - Izhar Halqi')
 
 @section('content')
+@php
+    $selectedAyah = request('ayah');
+    $sourceSurah = request('surah');
+    $sourceAyah = request('ayah_number');
+@endphp
+
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-lg-10">
@@ -18,6 +24,35 @@
                     is followed by one of the <strong>6 throat letters</strong>
                 </div>
             </div>
+
+            @if($selectedAyah)
+                <div class="selected-ayah-card izhar mb-4" id="selected-ayah">
+                    <div class="selected-ayah-header">
+                        <div>
+                            <div class="selected-ayah-label">
+                                <i class="fas fa-book-open me-2"></i>Selected ayah from Quran page
+                            </div>
+                            <h2>Practice this ayah for Izhar</h2>
+                        </div>
+
+                        @if($sourceSurah)
+                            <a href="{{ route('recite.quran', ['surah' => $sourceSurah]) }}{{ $sourceAyah ? '#ayah-' . $sourceAyah : '' }}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-arrow-left me-1"></i> Back to ayah
+                            </a>
+                        @else
+                            <a href="{{ route('recite.quran') }}" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-book-quran me-1"></i> Quran page
+                            </a>
+                        @endif
+                    </div>
+
+                    <div class="selected-ayah-text arabic-text">{{ $selectedAyah }}</div>
+                    <div class="selected-ayah-guidance">
+                        <i class="fas fa-microphone-alt me-2"></i>
+                        Read this exact ayah when recording so the analysis matches the ayah you clicked.
+                    </div>
+                </div>
+            @endif
 
             <!-- Throat Letters Section -->
             <div class="card mb-4">
@@ -285,6 +320,9 @@
                             <form id="uploadFormIzhar" method="POST" action="{{ route('tajweed.upload') }}" enctype="multipart/form-data">
                                 @csrf
                                 <input type="hidden" name="tajweed_rule" value="izhar">
+                                @if($selectedAyah)
+                                    <input type="hidden" name="selected_ayah" value="{{ $selectedAyah }}">
+                                @endif
                                 
                                 <div class="file-upload mb-4">
                                     <i class="fas fa-cloud-upload-alt"></i>
@@ -315,13 +353,13 @@
                                 </div>
                                 
                                 <div class="d-flex justify-content-center gap-3 mb-4">
-                                    <button class="btn btn-success btn-record" id="startBtnIzhar">
+                                    <button type="button" class="btn btn-success btn-record" id="startBtnIzhar">
                                         <i class="fas fa-microphone me-2"></i>Start Recording
                                     </button>
-                                    <button class="btn btn-danger btn-record" id="stopBtnIzhar" disabled>
+                                    <button type="button" class="btn btn-danger btn-record" id="stopBtnIzhar" disabled>
                                         <i class="fas fa-stop me-2"></i>Stop
                                     </button>
-                                    <button class="btn btn-warning btn-record" id="pauseBtnIzhar" disabled style="display: none;">
+                                    <button type="button" class="btn btn-warning btn-record" id="pauseBtnIzhar" disabled style="display: none;">
                                         <i class="fas fa-pause me-2"></i>Pause
                                     </button>
                                 </div>
@@ -330,7 +368,7 @@
                                 <div id="recordingPreviewIzhar" class="mb-4" style="display: none;">
                                     <h6>Recording Preview:</h6>
                                     <audio id="recordedAudioIzhar" controls class="w-100"></audio>
-                                    <button id="submitRecordingIzhar" class="btn btn-primary mt-2">
+                                    <button type="button" id="submitRecordingIzhar" class="btn btn-primary mt-2">
                                         <i class="fas fa-paper-plane me-2"></i>Submit Recording
                                     </button>
                                 </div>
@@ -641,6 +679,55 @@
     margin-bottom: 1rem;
 }
 
+.selected-ayah-card {
+    background: #fff;
+    border: 1px solid #d6edf1;
+    border-left: 5px solid var(--izhar-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+}
+
+.selected-ayah-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.selected-ayah-label {
+    color: var(--gray);
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.selected-ayah-header h2 {
+    color: var(--dark);
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.selected-ayah-text {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--dark);
+    direction: rtl;
+    font-size: 2rem;
+    line-height: 2;
+    padding: 1rem;
+    text-align: right;
+}
+
+.selected-ayah-guidance {
+    color: var(--gray);
+    font-size: 0.92rem;
+    margin-top: 0.85rem;
+}
+
 /* Recording Section */
 .recording-section .timer {
     font-family: monospace;
@@ -705,6 +792,14 @@
     
     .rules-summary .col-md-6 {
         margin-bottom: 1rem;
+    }
+
+    .selected-ayah-header {
+        flex-direction: column;
+    }
+
+    .selected-ayah-text {
+        font-size: 1.55rem;
     }
 }
 </style>
@@ -828,9 +923,11 @@
                 // Request microphone access
                 audioStream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        sampleRate: 44100
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 1,
+                        sampleRate: 16000
                     }
                 });
                 
@@ -849,7 +946,19 @@
                 drawWaveform();
                 
                 // Create media recorder
-                mediaRecorder = new MediaRecorder(audioStream);
+                const preferredMimeTypes = [
+                    'audio/webm;codecs=opus',
+                    'audio/webm',
+                    'audio/mp4'
+                ];
+                const recorderOptions = {};
+                const supportedMimeType = preferredMimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+
+                if (supportedMimeType) {
+                    recorderOptions.mimeType = supportedMimeType;
+                }
+
+                mediaRecorder = new MediaRecorder(audioStream, recorderOptions);
                 audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
@@ -860,7 +969,8 @@
                 
                 mediaRecorder.onstop = () => {
                     // Create audio blob
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const blobType = mediaRecorder.mimeType || 'audio/webm';
+                    const audioBlob = new Blob(audioChunks, { type: blobType });
                     const audioUrl = URL.createObjectURL(audioBlob);
                     
                     // Show preview
@@ -977,10 +1087,14 @@
                 alert('No recording to submit. Please record first.');
                 return;
             }
+
+            submitRecording.disabled = true;
+            submitRecording.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Submitting...';
             
             // Create form data
             const formData = new FormData();
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const blobType = mediaRecorder?.mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunks, { type: blobType });
             
             // Convert blob to base64 for proper submission
             const reader = new FileReader();
@@ -1009,6 +1123,14 @@
                 ruleInput.name = 'tajweed_rule';
                 ruleInput.value = 'izhar'; // Changed to 'izhar' for Izhar Halqi page
                 form.appendChild(ruleInput);
+
+                @if($selectedAyah)
+                    const selectedAyahInput = document.createElement('input');
+                    selectedAyahInput.type = 'hidden';
+                    selectedAyahInput.name = 'selected_ayah';
+                    selectedAyahInput.value = @json($selectedAyah);
+                    form.appendChild(selectedAyahInput);
+                @endif
                 
                 // Add audio as base64
                 const audioInput = document.createElement('input');
@@ -1020,6 +1142,12 @@
                 // Add to document and submit
                 document.body.appendChild(form);
                 form.submit();
+            };
+
+            reader.onerror = function() {
+                submitRecording.disabled = false;
+                submitRecording.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Submit Recording';
+                alert('Could not prepare the recording. Please try recording again.');
             };
         });
         

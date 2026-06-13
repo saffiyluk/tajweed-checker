@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="840" viewBox="0 0 1280 840" role="img" aria-labelledby="title desc">
+  <title id="title">Tajweed Learning Platform Use Case Diagram</title>
+  <desc id="desc">Use case diagram showing learner, admin, Firebase storage, Quran API, Gemini API, and Python ML model interactions.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7faf8; }
+      .system { fill: #ffffff; stroke: #1f6f5b; stroke-width: 2.5; }
+      .system-title { fill: #17483d; font: 700 24px Arial, sans-serif; }
+      .actor-label { fill: #23342f; font: 700 18px Arial, sans-serif; text-anchor: middle; }
+      .actor-line { stroke: #23342f; stroke-width: 3; stroke-linecap: round; fill: none; }
+      .use-case { fill: #eef8f3; stroke: #2f8f73; stroke-width: 2; }
+      .use-case.alt { fill: #eef4ff; stroke: #3c6fc4; }
+      .use-case.admin { fill: #fff7e7; stroke: #c07a19; }
+      .use-text { fill: #15251f; font: 600 15px Arial, sans-serif; text-anchor: middle; }
+      .small-text { fill: #52645d; font: 13px Arial, sans-serif; text-anchor: middle; }
+      .connector { stroke: #536760; stroke-width: 2; fill: none; }
+      .include { stroke: #64748b; stroke-width: 1.8; stroke-dasharray: 7 6; fill: none; marker-end: url(#arrow); }
+      .include-text { fill: #475569; font: italic 13px Arial, sans-serif; text-anchor: middle; }
+      .external { fill: #ffffff; stroke: #64748b; stroke-width: 2; }
+      .external-label { fill: #334155; font: 700 15px Arial, sans-serif; text-anchor: middle; }
+      .note { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .note-text { fill: #334155; font: 14px Arial, sans-serif; }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1280" height="840"/>
+
+  <rect class="system" x="250" y="70" width="780" height="690" rx="16"/>
+  <text class="system-title" x="640" y="110">AI-Assisted Tajweed Learning Platform</text>
+
+  <!-- Learner actor -->
+  <circle class="actor-line" cx="112" cy="214" r="26"/>
+  <path class="actor-line" d="M112 240 L112 326"/>
+  <path class="actor-line" d="M62 274 L162 274"/>
+  <path class="actor-line" d="M112 326 L72 386"/>
+  <path class="actor-line" d="M112 326 L152 386"/>
+  <text class="actor-label" x="112" y="425">Learner</text>
+
+  <!-- Admin actor -->
+  <circle class="actor-line" cx="1156" cy="214" r="26"/>
+  <path class="actor-line" d="M1156 240 L1156 326"/>
+  <path class="actor-line" d="M1106 274 L1206 274"/>
+  <path class="actor-line" d="M1156 326 L1116 386"/>
+  <path class="actor-line" d="M1156 326 L1196 386"/>
+  <text class="actor-label" x="1156" y="425">Admin</text>
+
+  <!-- External systems -->
+  <rect class="external" x="72" y="570" width="142" height="58" rx="8"/>
+  <text class="external-label" x="143" y="604">Quran API</text>
+
+  <rect class="external" x="72" y="650" width="142" height="58" rx="8"/>
+  <text class="external-label" x="143" y="684">Gemini API</text>
+
+  <rect class="external" x="1060" y="570" width="160" height="58" rx="8"/>
+  <text class="external-label" x="1140" y="604">Firebase Storage</text>
+
+  <rect class="external" x="1060" y="650" width="160" height="58" rx="8"/>
+  <text class="external-label" x="1140" y="675">Python ML</text>
+  <text class="small-text" x="1140" y="695">CNN + feature model</text>
+
+  <!-- Learner use cases -->
+  <ellipse class="use-case" cx="430" cy="170" rx="118" ry="38"/>
+  <text class="use-text" x="430" y="166">Register / Login</text>
+  <text class="small-text" x="430" y="185">manage account</text>
+
+  <ellipse class="use-case" cx="640" cy="170" rx="118" ry="38"/>
+  <text class="use-text" x="640" y="166">Browse Quran</text>
+  <text class="small-text" x="640" y="185">select surah / ayah</text>
+
+  <ellipse class="use-case" cx="850" cy="170" rx="118" ry="38"/>
+  <text class="use-text" x="850" y="166">Learn Tajweed Rule</text>
+  <text class="small-text" x="850" y="185">Ikhfa / Izhar</text>
+
+  <ellipse class="use-case" cx="430" cy="285" rx="124" ry="42"/>
+  <text class="use-text" x="430" y="281">Record or Upload</text>
+  <text class="small-text" x="430" y="300">recitation audio</text>
+
+  <ellipse class="use-case alt" cx="640" cy="285" rx="132" ry="42"/>
+  <text class="use-text" x="640" y="281">Analyze Recitation</text>
+  <text class="small-text" x="640" y="300">detect tajweed rule</text>
+
+  <ellipse class="use-case" cx="850" cy="285" rx="120" ry="42"/>
+  <text class="use-text" x="850" y="281">View Feedback</text>
+  <text class="small-text" x="850" y="300">confidence + tips</text>
+
+  <ellipse class="use-case" cx="430" cy="400" rx="120" ry="42"/>
+  <text class="use-text" x="430" y="396">View History</text>
+  <text class="small-text" x="430" y="415">past recitations</text>
+
+  <ellipse class="use-case" cx="640" cy="400" rx="120" ry="42"/>
+  <text class="use-text" x="640" y="396">Submit Correction</text>
+  <text class="small-text" x="640" y="415">improve label/data</text>
+
+  <ellipse class="use-case" cx="850" cy="400" rx="120" ry="42"/>
+  <text class="use-text" x="850" y="396">Download Report</text>
+  <text class="small-text" x="850" y="415">PDF progress</text>
+
+  <!-- Admin use cases -->
+  <ellipse class="use-case admin" cx="430" cy="560" rx="124" ry="40"/>
+  <text class="use-text" x="430" y="556">Manage Users</text>
+  <text class="small-text" x="430" y="575">roles + profiles</text>
+
+  <ellipse class="use-case admin" cx="640" cy="560" rx="138" ry="40"/>
+  <text class="use-text" x="640" y="556">Review Recitations</text>
+  <text class="small-text" x="640" y="575">results + corrections</text>
+
+  <ellipse class="use-case admin" cx="850" cy="560" rx="130" ry="40"/>
+  <text class="use-text" x="850" y="556">Manage Dataset</text>
+  <text class="small-text" x="850" y="575">upload samples</text>
+
+  <ellipse class="use-case admin" cx="520" cy="665" rx="132" ry="40"/>
+  <text class="use-text" x="520" y="661">Retrain / Evaluate</text>
+  <text class="small-text" x="520" y="680">tajweed model</text>
+
+  <ellipse class="use-case admin" cx="760" cy="665" rx="136" ry="40"/>
+  <text class="use-text" x="760" y="661">Monitor Analytics</text>
+  <text class="small-text" x="760" y="680">usage + system health</text>
+
+  <!-- Learner connectors -->
+  <path class="connector" d="M162 230 C230 190 280 176 312 173"/>
+  <path class="connector" d="M162 248 C235 230 324 278 307 284"/>
+  <path class="connector" d="M162 268 C255 245 520 174 522 172"/>
+  <path class="connector" d="M162 292 C235 320 315 375 314 390"/>
+  <path class="connector" d="M162 312 C255 355 500 398 520 398"/>
+  <path class="connector" d="M162 335 C300 430 760 408 734 402"/>
+
+  <!-- Admin connectors -->
+  <path class="connector" d="M1106 246 C1015 250 969 278 970 282"/>
+  <path class="connector" d="M1106 284 C1015 360 989 532 977 550"/>
+  <path class="connector" d="M1106 305 C1015 450 781 550 776 555"/>
+  <path class="connector" d="M1106 326 C978 470 656 648 648 658"/>
+  <path class="connector" d="M1106 350 C980 565 900 651 894 660"/>
+  <path class="connector" d="M1106 370 C935 600 558 559 554 559"/>
+
+  <!-- Include / service relationships -->
+  <path class="include" d="M537 285 L506 285"/>
+  <text class="include-text" x="575" y="260">&lt;&lt;include&gt;&gt;</text>
+
+  <path class="include" d="M757 285 L728 285"/>
+  <text class="include-text" x="750" y="260">&lt;&lt;include&gt;&gt;</text>
+
+  <path class="include" d="M761 300 C900 360 1035 620 1080 653"/>
+  <text class="include-text" x="980" y="500">prediction</text>
+
+  <path class="include" d="M756 308 C910 400 1030 560 1068 588"/>
+  <text class="include-text" x="990" y="448">store audio</text>
+
+  <path class="include" d="M764 281 C915 250 1040 270 1072 575"/>
+  <text class="include-text" x="1010" y="310">retrieve audio</text>
+
+  <path class="include" d="M642 212 C525 512 232 580 214 592"/>
+  <text class="include-text" x="350" y="512">surah data</text>
+
+  <path class="include" d="M806 309 C560 500 235 636 213 663"/>
+  <text class="include-text" x="410" y="630">feedback text</text>
+
+  <path class="include" d="M641 625 C760 658 1010 675 1060 675"/>
+  <text class="include-text" x="900" y="650">training/evaluation</text>
+
+  <!-- Note -->
+  <rect class="note" x="284" y="776" width="712" height="38" rx="7"/>
+  <text class="note-text" x="305" y="800">Main flow: learner records Quran recitation -> app stores audio -> ML predicts tajweed rule -> app returns confidence, feedback, history, and reports.</text>
+</svg>

@@ -49,15 +49,6 @@ Route::get('/firebase-test', function () {
     return 'Firebase connected successfully!';
 });
 
-Route::get('/tajweed/izhar-halqi', function () {
-    return view('tajweed.izharHalqi');
-})->name('tajweed.izhar-halqi');
-Route::get('/tajweed/ikhfa-haqiqi', function () {
-    return view('tajweed.ikhfaHaqiqi');
-})->name('tajweed.ikhfa-haqiqi');
-
-
-
 // Tajweed endpoints (requires auth)
 Route::middleware('auth')->group(function () {
     // Main Tajweed routes (make sure these match your navbar links)
@@ -69,6 +60,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/tajweed/result/{audioRecitation}', [TajweedController::class, 'result'])->name('tajweed.result');
     Route::get('/tajweed/history', [TajweedController::class, 'history'])->name('tajweed.history');
     Route::get('/tajweed/analysis-status/{audioRecitation}', [TajweedController::class, 'getAnalysisStatus'])->name('tajweed.analysis-status');
+    Route::post('/tajweed/reanalyze/{audioRecitation}', [TajweedController::class, 'reanalyze'])->name('tajweed.reanalyze');
+    Route::post('/tajweed/correction/{audioRecitation}', [TajweedController::class, 'storeCorrection'])->name('tajweed.correction.store');
 });
 
 //Test Firebase Storage connection
@@ -127,7 +120,16 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 
     // Recitations Management
     Route::get('/recitations', [AdminController::class, 'recitations'])->name('recitations.index');
+    Route::get('/recitations/{audioRecitation}', [AdminController::class, 'showRecitation'])->name('recitations.show');
     Route::delete('/recitations/{audioRecitation}', [AdminController::class, 'destroyRecitation'])->name('recitations.destroy');
+    Route::get('/corrections', [AdminController::class, 'corrections'])->name('corrections.index');
+    Route::patch('/corrections/{analysisResult}', [AdminController::class, 'updateCorrection'])->name('corrections.update');
+
+    // Dataset and Model Management
+    Route::get('/datasets', [AdminController::class, 'datasets'])->name('datasets.index');
+    Route::post('/datasets', [AdminController::class, 'uploadDataset'])->name('datasets.upload');
+    Route::post('/model/retrain', [AdminController::class, 'retrainModel'])->name('model.retrain');
+    Route::get('/evaluation', [AdminController::class, 'evaluation'])->name('evaluation');
 
     // System Monitoring
     Route::get('/monitoring', [AdminController::class, 'monitoring'])->name('monitoring');
@@ -147,16 +149,3 @@ Route::get('/quran/{id}', [QuranController::class, 'surah'])->name('quran.surah'
 Route::get('/recite-quran/{surah?}', [QuranController::class, 'showSurah'])
     ->where('surah', '[0-9]+')
     ->name('recite.quran');
-
-Route::get('/result', function () {
-    $result = session('tajweed_result');
-
-    if (!$result) {
-        return redirect()->back()->with('error', 'No analysis found');
-    }
-
-    return view('tajweed.result', compact('result'));
-})->name('tajweed.result');
-
-Route::get('/tajweed/result/{id}', [TajweedController::class, 'result'])
-    ->name('tajweed.result');

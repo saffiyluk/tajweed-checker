@@ -273,14 +273,14 @@
                                                         <i class="fas fa-check-circle me-2"></i>
                                                         <span>Correct Pronunciation</span>
                                                         <span
-                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100) }}%</span>
+                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100/100) }}%</span>
                                                     </div>
                                                 @else
                                                     <div class="status-incorrect">
                                                         <i class="fas fa-times-circle me-2"></i>
                                                         <span>Needs Improvement</span>
                                                         <span
-                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100) }}%</span>
+                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100/100) }}%</span>
                                                     </div>
                                                 @endif
                                             @elseif($recitation->analysisResult->processing_status === 'processing')

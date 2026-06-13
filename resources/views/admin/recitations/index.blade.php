@@ -78,24 +78,30 @@
                                 <small>{{ $recitation->original_filename }}</small>
                             </td>
                             <td>
-                                @if($recitation->analysisResult)
-                                    @if($recitation->analysisResult->processing_status == 'completed')
-                                        @if($recitation->analysisResult->correctness >= 80)
-                                            <span class="badge bg-success">{{ $recitation->analysisResult->correctness }}%</span>
-                                        @elseif($recitation->analysisResult->correctness >= 60)
-                                            <span class="badge bg-warning">{{ $recitation->analysisResult->correctness }}%</span>
-                                        @else
-                                            <span class="badge bg-danger">{{ $recitation->analysisResult->correctness }}%</span>
+                                @php($analysis = $recitation->analysisResult)
+                                @if($analysis)
+                                    @if($analysis->processing_status == 'completed')
+                                        <span class="badge {{ $analysis->correctness === 'correct' ? 'bg-success' : 'bg-danger' }}">
+                                            {{ ucfirst($analysis->correctness ?? 'unknown') }}
+                                            @if(!is_null($analysis->confidence_score))
+                                                ({{ round($analysis->confidence_score) }}%)
+                                            @endif
+                                        </span>
+                                        @if($analysis->correction_submitted_at)
+                                            <a href="{{ route('admin.corrections.index', ['search' => $recitation->original_filename]) }}"
+                                                class="badge bg-warning text-dark text-decoration-none ms-1">
+                                                Correction: {{ ucfirst($analysis->correction_review_status ?? 'pending') }}
+                                            </a>
                                         @endif
                                     @else
-                                        <span class="badge bg-secondary">{{ ucfirst($recitation->analysisResult->processing_status) }}</span>
+                                        <span class="badge bg-secondary">{{ ucfirst($analysis->processing_status) }}</span>
                                     @endif
                                 @else
                                     <span class="badge bg-secondary">No Analysis</span>
                                 @endif
                             </td>
                             <td>
-                                <small>{{ $recitation->duration ?? 'N/A' }}</small>
+                                <small>{{ $recitation->duration_seconds ? $recitation->duration_seconds . 's' : 'N/A' }}</small>
                             </td>
                             <td>
                                 <small>{{ $recitation->created_at->diffForHumans() }}</small>
@@ -103,11 +109,11 @@
                             <td>
                                 <div class="btn-group btn-group-sm">
                                     <button class="btn btn-outline-primary play-audio" 
-                                            data-audio="{{ Storage::url($recitation->audio_file_path) }}"
+                                            data-audio="{{ route('tajweed.play-audio', $recitation) }}"
                                             title="Play">
                                         <i class="fas fa-play"></i>
                                     </button>
-                                    <a href="#" class="btn btn-outline-info" title="View Details">
+                                    <a href="{{ route('admin.recitations.show', $recitation) }}" class="btn btn-outline-info" title="View Details">
                                         <i class="fas fa-eye"></i>
                                     </a>
                                     <form action="{{ route('admin.recitations.destroy', $recitation) }}" method="POST" class="d-inline">
@@ -151,7 +157,7 @@
 </div>
 @endsection
 
-@section('scripts')
+@push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Audio player functionality
@@ -168,4 +174,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-@endsection
+@endpush
