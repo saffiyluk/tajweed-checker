@@ -21,7 +21,7 @@ class AudioRecitationPolicy
      */
     public function view(User $user, AudioRecitation $audioRecitation): bool
     {
-        return $user->id === $audioRecitation->user_id;
+        return $user->is_admin || $user->id === $audioRecitation->user_id;
     }
 
     /**

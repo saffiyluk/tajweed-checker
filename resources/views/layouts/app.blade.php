@@ -137,13 +137,20 @@
         }
 
         .navbar-toggler {
-            border: none;
+            border: 1px solid rgba(13, 110, 253, 0.18);
+            border-radius: 8px;
+            min-height: 44px;
+            min-width: 44px;
             padding: 0.5rem;
         }
 
         .navbar-toggler i {
             font-size: 1.5rem;
             color: var(--tajweed-primary);
+        }
+
+        .navbar-toggler:focus {
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.18);
         }
 
         /* Main Content */
@@ -192,6 +199,75 @@
             body {
                 padding-top: 70px;
             }
+
+            .navbar {
+                padding: 0.6rem 0;
+            }
+
+            .navbar .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+
+            .navbar-brand {
+                font-size: 1.25rem;
+                max-width: calc(100% - 58px);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .navbar-collapse {
+                background: #fff;
+                border-top: 1px solid rgba(13, 110, 253, 0.08);
+                margin-top: 0.75rem;
+                max-height: calc(100vh - 78px);
+                overflow-y: auto;
+                padding: 0.5rem 0 0.75rem;
+            }
+
+            .navbar-nav {
+                gap: 0.2rem;
+            }
+
+            .nav-link {
+                align-items: center;
+                border-radius: 8px;
+                display: flex;
+                margin: 0;
+                min-height: 44px;
+                padding: 0.65rem 0.9rem !important;
+            }
+
+            .nav-link.active {
+                border-radius: 8px;
+            }
+
+            .dropdown-menu {
+                background: rgba(13, 110, 253, 0.04);
+                border-radius: 8px;
+                box-shadow: none;
+                margin: 0.15rem 0 0.35rem;
+                padding: 0.35rem;
+            }
+
+            .dropdown-item {
+                border-radius: 8px;
+                min-height: 40px;
+                padding: 0.55rem 0.85rem;
+            }
+
+            #userDropdown .d-flex {
+                width: 100%;
+            }
+
+            #userDropdown small {
+                display: block !important;
+                font-size: 0.95rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
             
             footer {
                 text-align: center;
@@ -205,7 +281,7 @@
 
         /* Dropdown animation */
         .dropdown-menu {
-            display: block;
+            display: none;
             opacity: 0;
             visibility: hidden;
             transform: translateY(-10px);
@@ -213,6 +289,7 @@
         }
 
         .dropdown-menu.show {
+            display: block;
             opacity: 1;
             visibility: visible;
             transform: translateY(0);

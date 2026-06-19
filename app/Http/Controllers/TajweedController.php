@@ -970,6 +970,8 @@ class TajweedController extends Controller
 
     public function destroy(AudioRecitation $audioRecitation)
     {
+        $this->authorize('view', $audioRecitation);
+
         // Delete the stored audio file before deleting the database row.
         if ($audioRecitation->audio_file_path) {
             // Local public-disk file.
@@ -1094,6 +1096,28 @@ class TajweedController extends Controller
         }
 
         abort(404, 'Audio file not found');
+    }
+
+    public function playDatasetAudio(string $rule, string $filename)
+    {
+        if (!in_array($rule, ['ikhfa', 'izhar'], true) || basename($filename) !== $filename) {
+            abort(404, 'Audio file not found');
+        }
+
+        $datasetDirectory = realpath(base_path("python/dataset/{$rule}"));
+        $file = realpath(base_path("python/dataset/{$rule}/{$filename}"));
+
+        if (!$datasetDirectory || !$file || !str_starts_with($file, $datasetDirectory) || !is_file($file)) {
+            abort(404, 'Audio file not found');
+        }
+
+        $mime = mime_content_type($file) ?: 'audio/wav';
+
+        return response()->file($file, [
+            'Content-Type' => $mime,
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'public, max-age=31536000',
+        ]);
     }
 
     public function analyzeAudio(Request $request)

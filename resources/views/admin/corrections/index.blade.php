@@ -62,6 +62,7 @@
                 <tr>
                     <th>Submitted</th>
                     <th>User</th>
+                    <th>Audio</th>
                     <th>Original Result</th>
                     <th>User Correction</th>
                     <th>Admin Review</th>
@@ -87,6 +88,19 @@
                             <strong>{{ optional($audio?->user)->name ?? 'Unknown User' }}</strong>
                             <div class="text-muted small">{{ optional($audio?->user)->email }}</div>
                             <div class="text-muted small">{{ $audio?->original_filename ?? 'No filename' }}</div>
+                        </td>
+                        <td style="min-width: 230px;">
+                            @if($audio)
+                                <audio controls preload="none" class="w-100">
+                                    <source src="{{ route('tajweed.play-audio', $audio) }}">
+                                </audio>
+                                <a href="{{ route('admin.recitations.show', $audio) }}" class="btn btn-sm btn-outline-secondary mt-2">
+                                    <i class="fas fa-eye me-1"></i>
+                                    Details
+                                </a>
+                            @else
+                                <span class="text-muted small">Audio unavailable</span>
+                            @endif
                         </td>
                         <td>
                             <div>
@@ -157,7 +171,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-5">
+                        <td colspan="6" class="text-center text-muted py-5">
                             <i class="fas fa-inbox fa-2x mb-3 d-block"></i>
                             No corrections submitted yet.
                         </td>

@@ -36,24 +36,30 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile/{id}', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-/** Firebase Testing */
-Route::get('/firebase-test', function () {
-    $factory = (new \Kreait\Firebase\Factory)
-        ->withServiceAccount(base_path(config('firebase.credentials')))
-        ->withDefaultStorageBucket(config('firebase.storage_bucket'))
-        ->createFirestore(['transport' => 'rest']);
+if (app()->environment('local')) {
+    /** Firebase Testing */
+    Route::get('/firebase-test', function () {
+        $factory = (new \Kreait\Firebase\Factory)
+            ->withServiceAccount(base_path(config('firebase.credentials')))
+            ->withDefaultStorageBucket(config('firebase.storage_bucket'))
+            ->createFirestore(['transport' => 'rest']);
 
-    $bucket = $factory->createStorage()->getBucket();
-    $usersCollection = $factory->createFirestore()->collection('users');
+        $bucket = $factory->createStorage()->getBucket();
+        $usersCollection = $factory->createFirestore()->collection('users');
 
-    return 'Firebase connected successfully!';
-});
+        return 'Firebase connected successfully!';
+    });
+}
 
 // Tajweed endpoints (requires auth)
 Route::middleware('auth')->group(function () {
     // Main Tajweed routes (make sure these match your navbar links)
     Route::get('/tajweed/ikhfa-haqiqi', [TajweedController::class, 'ikhfaHaqiqi'])->name('tajweed.ikhfa-haqiqi');
     Route::get('/tajweed/izhar-halqi', [TajweedController::class, 'izharHalqi'])->name('tajweed.izhar-halqi');
+    Route::get('/tajweed/dataset-audio/{rule}/{filename}', [TajweedController::class, 'playDatasetAudio'])
+        ->whereIn('rule', ['ikhfa', 'izhar'])
+        ->where('filename', '[A-Za-z0-9_.-]+\.wav')
+        ->name('tajweed.dataset-audio');
 
     // Upload and result routes
     Route::post('/tajweed/upload', [TajweedController::class, 'upload'])->name('tajweed.upload');
@@ -64,36 +70,40 @@ Route::middleware('auth')->group(function () {
     Route::post('/tajweed/correction/{audioRecitation}', [TajweedController::class, 'storeCorrection'])->name('tajweed.correction.store');
 });
 
-//Test Firebase Storage connection
-Route::get('/test-firebase', function () {
-    echo "<pre>";
-    echo "FIREBASE_STORAGE_BUCKET: " . config('firebase.storage_bucket') . "\n";
-    echo "FIREBASE_CREDENTIALS path: " . base_path(config('firebase.credentials')) . "\n";
-    echo "File exists: " . (file_exists(base_path(config('firebase.credentials'))) ? 'YES' : 'NO') . "\n";
-    echo "</pre>";
+if (app()->environment('local')) {
+    //Test Firebase Storage connection
+    Route::get('/test-firebase', function () {
+        echo "<pre>";
+        echo "FIREBASE_STORAGE_BUCKET: " . config('firebase.storage_bucket') . "\n";
+        echo "FIREBASE_CREDENTIALS path: " . base_path(config('firebase.credentials')) . "\n";
+        echo "File exists: " . (file_exists(base_path(config('firebase.credentials'))) ? 'YES' : 'NO') . "\n";
+        echo "</pre>";
 
-    try {
-        $factory = (new \Kreait\Firebase\Factory())
-            ->withServiceAccount(base_path(config('firebase.credentials')))
-            ->withDefaultStorageBucket(config('firebase.storage_bucket'));
+        try {
+            $factory = (new \Kreait\Firebase\Factory())
+                ->withServiceAccount(base_path(config('firebase.credentials')))
+                ->withDefaultStorageBucket(config('firebase.storage_bucket'));
 
-        $storage = $factory->createStorage();
-        $bucket = $storage->getBucket();
+            $storage = $factory->createStorage();
+            $bucket = $storage->getBucket();
 
-        return response()->json([
-            'status' => 'success',
-            'bucket' => $bucket->name(),
-            'message' => 'Firebase Storage connected successfully'
-        ]);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => $e->getMessage()
-        ]);
-    }
-});
+            return response()->json([
+                'status' => 'success',
+                'bucket' => $bucket->name(),
+                'message' => 'Firebase Storage connected successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ]);
+        }
+    });
+}
 
-Route::get('/debug/firebase', [TajweedController::class, 'debugFirebase']);
+if (app()->environment('local')) {
+    Route::get('/debug/firebase', [TajweedController::class, 'debugFirebase']);
+}
 
 Route::delete('/tajweed/delete/{audioRecitation}', [TajweedController::class, 'destroy'])->name('tajweed.delete');
 Route::get('/tajweed/download/{audioRecitation}', [TajweedController::class, 'download'])->name('tajweed.download');

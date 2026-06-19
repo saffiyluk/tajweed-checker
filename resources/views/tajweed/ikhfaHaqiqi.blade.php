@@ -21,6 +21,7 @@
                 <i class="fas fa-lightbulb me-2"></i>
                 <strong>Rule Insight:</strong> Ikhfa occurs when a <strong>noon sakinah</strong> or <strong>tanween</strong> 
                 is followed by one of the <strong>15 Ikhfa letters</strong>
+                is followed by one of the <strong>15 Ikhfa letters</strong>
             </div>
         </div>
 
@@ -65,10 +66,10 @@
                 <div class="bg-light p-4 rounded mb-4">
                     <h6 class="fw-bold mb-3">Memory Aid Phrase</h6>
                     <p class="arabic-text text-center mb-2" style="font-size: 1.3rem;">
-                        صِفْ ذَا ثَنَا كَمْ جَادَ شَخْصٌ قَدْ سَمَا دُمْ طَيِّبًا زِدْ فِي تُقًى ضَعْ ظَالِمَا
+                        سَتُجْزَ صَدَّقَ فَثِكْ ضَطَظٍ شَذٍ
                     </p>
                     <small class="text-muted text-center d-block">
-                        Pronounce: <em>"Sif tha thana kam jada shakhsun qad sama dum tayyiban zid fi tuqan da' thalima"</em>
+                        Pronounce: <em>"Satujza Soddaqa Fathik Dhatozin Syazzin"</em>
                     </small>
                 </div>
 
@@ -148,11 +149,19 @@
                         <i class="fas fa-file-audio me-2"></i>Audio Examples
                     </div>
                     <div class="card-body">
+                        @php
+                            $ikhfaAudioFiles = [
+                                '002055_tsn8PTbY.wav',
+                                '056052_iG5m6c83.wav',
+                                '066008_EFBUuhxB.wav',
+                                '078014_b6kCgRRi.wav',
+                            ];
+                        @endphp
                         @foreach([
-                            ['arabic' => 'مَنْ تَابَ', 'translation' => 'Whoever repents', 'audio' => '#'],
-                            ['arabic' => 'أَنْصَارَ', 'translation' => 'Helpers', 'audio' => '#'],
-                            ['arabic' => 'مِنْ قَبْلِ', 'translation' => 'From before', 'audio' => '#'],
-                            ['arabic' => 'عَلِيمٌ ذُو', 'translation' => 'All-Knowing, Owner of', 'audio' => '#'],
+                            ['arabic' => 'تَنظُرُونَ', 'translation' => 'you look', 'audio' => '#'],
+                            ['arabic' => 'مِّن زَقُّومٍ', 'translation' => 'from [the tree of] Zaqqum', 'audio' => '#'],
+                            ['arabic' => 'مِن تَحْتِهَا الْأَنْهَارُ', 'translation' => 'beneath which rivers flow', 'audio' => '#'],
+                            ['arabic' => 'وَأَنْزَلْنَا', 'translation' => 'and We sent down', 'audio' => '#'],
                         ] as $example)
                             <div class="audio-example">
                                 <div class="content">
@@ -160,7 +169,7 @@
                                     <div class="translation">{{ $example['translation'] }}</div>
                                 </div>
                                 <audio id="audio-{{ $loop->index }}" style="display: none;">
-                                    <source src="{{ $example['audio'] }}" type="audio/mpeg">
+                                    <source src="{{ route('tajweed.dataset-audio', ['rule' => 'ikhfa', 'filename' => $ikhfaAudioFiles[$loop->index]]) }}" type="audio/wav">
                                 </audio>
                                 <button class="btn-play" onclick="playAudio('audio-{{ $loop->index }}', this)">
                                     <i class="fas fa-play"></i>

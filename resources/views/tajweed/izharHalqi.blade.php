@@ -218,11 +218,19 @@
                             <i class="fas fa-file-audio me-2"></i>Audio Examples
                         </div>
                         <div class="card-body">
+                            @php
+                                $izharAudioFiles = [
+                                    '079031_RAgaIHli.wav',
+                                    '083005_Vl2eRWWI.wav',
+                                    '059003_YiG1IQ63.wav',
+                                    '085011_aeaX3bHZ.wav',
+                                ];
+                            @endphp
                             @foreach([
-                                ['arabic' => 'مَنْ آمَنَ', 'translation' => 'Whoever believes', 'audio' => '#'],
-                                ['arabic' => 'عَلِيْمٌ حَكِيْمٌ', 'translation' => 'All-Knowing, All-Wise', 'audio' => '#'],
-                                ['arabic' => 'مِنْ خَيْرٍ', 'translation' => 'From good', 'audio' => '#'],
-                                ['arabic' => 'كِتَابٌ عَزِيزٌ', 'translation' => 'A mighty Book', 'audio' => '#'],
+                                ['arabic' => 'مِنْهَا', 'translation' => 'from it', 'audio' => '#'],
+                                ['arabic' => 'لِيَوْمٍ عَظِيمٍ', 'translation' => 'for a great day', 'audio' => '#'],
+                                ['arabic' => 'ٱلدُّنۡيَاۖ', 'translation' => 'World', 'audio' => '#'],
+                                ['arabic' => 'أنْهَارُ', 'translation' => 'Rivers', 'audio' => '#'],
                             ] as $example)
                                 <div class="audio-example">
                                     <div class="content">
@@ -230,7 +238,7 @@
                                         <div class="translation">{{ $example['translation'] }}</div>
                                     </div>
                                     <audio id="audio-izhar-{{ $loop->index }}" style="display: none;">
-                                        <source src="{{ $example['audio'] }}" type="audio/mpeg">
+                                        <source src="{{ route('tajweed.dataset-audio', ['rule' => 'izhar', 'filename' => $izharAudioFiles[$loop->index]]) }}" type="audio/wav">
                                     </audio>
                                     <button class="btn-play" onclick="playAudio('audio-izhar-{{ $loop->index }}', this)">
                                         <i class="fas fa-play"></i>
