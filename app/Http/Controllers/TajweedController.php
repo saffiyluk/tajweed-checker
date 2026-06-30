@@ -1037,6 +1037,15 @@ class TajweedController extends Controller
     {
         $systemRoot = getenv('SystemRoot') ?: getenv('SYSTEMROOT') ?: 'C:\\Windows';
         $path = getenv('PATH') ?: getenv('Path') ?: '';
+        $pathParts = array_filter(explode(PATH_SEPARATOR, $path));
+
+        foreach (['/usr/local/bin', '/usr/bin', '/bin', '/snap/bin'] as $binaryPath) {
+            if (is_dir($binaryPath) && !in_array($binaryPath, $pathParts, true)) {
+                $pathParts[] = $binaryPath;
+            }
+        }
+
+        $path = implode(PATH_SEPARATOR, $pathParts);
         $temp = getenv('TEMP') ?: sys_get_temp_dir();
         $tmp = getenv('TMP') ?: $temp;
         $pythonHome = storage_path('app/python-home');
