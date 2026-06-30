@@ -76,7 +76,7 @@ class ProfileController extends Controller
             'email' => $request->email,
         ], ['merge' => true]);
 
-        return redirect()->route('profile.show')->with('success', 'Profile updated successfully.');
+        return redirect()->route('profile.show', $user->id)->with('success', 'Profile updated successfully.');
     }
 
     // Upload/update audio
@@ -103,7 +103,7 @@ class ProfileController extends Controller
             'audio_path' => $storagePath
         ], ['merge' => true]);
 
-        return redirect()->route('profile.show')->with('success', 'Audio uploaded successfully.');
+        return redirect()->route('profile.show', $userId)->with('success', 'Audio uploaded successfully.');
     }
 
     // Delete profile

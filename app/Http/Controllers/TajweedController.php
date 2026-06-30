@@ -97,6 +97,7 @@ class TajweedController extends Controller
             'audio_base64' => 'nullable|string',
             'tajweed_rule' => 'required|in:ikhfa,izhar',
             'selected_ayah' => 'nullable|string|max:3000',
+            'browser_transcript' => 'nullable|string|max:5000',
         ]);
 
         $validator->after(function ($validator) use ($request) {
@@ -272,7 +273,8 @@ class TajweedController extends Controller
             $analysisOutcome = $this->analyzeRecitation(
                 $audioRecitation,
                 $audioData,
-                $request->input('selected_ayah')
+                $request->input('selected_ayah'),
+                $request->input('browser_transcript')
             );
 
             if (($analysisOutcome['status'] ?? null) === 'timeout') {
@@ -319,7 +321,7 @@ class TajweedController extends Controller
         \Log::info("Audio stored locally (Firebase unavailable): {$localPath}");
     }
 
-    private function analyzeRecitation(AudioRecitation $audioRecitation, string $audioData, ?string $selectedAyah = null): array
+    private function analyzeRecitation(AudioRecitation $audioRecitation, string $audioData, ?string $selectedAyah = null, ?string $browserTranscript = null): array
     {
         $this->extendExecutionLimit();
 
@@ -388,6 +390,10 @@ class TajweedController extends Controller
             $cnnPrediction = data_get($result, 'cnn.raw_prediction');
             $cnnConfidence = round((float) data_get($result, 'cnn.confidence', 0) * 100);
             $featureOtherConfidence = round((float) data_get($result, 'feature_model.other_confidence', 0) * 100);
+            $ghunnahDurationMs = (float) data_get($result, 'quality.ghunnah_duration_ms', 0);
+            $ikhfaMinGhunnahMs = (int) config('tajweed.ikhfa_min_ghunnah_ms', 450);
+            $ikhfaMinLocalGhunnahMs = (int) config('tajweed.ikhfa_min_local_ghunnah_ms', 180);
+            $izharMaxGhunnahMs = (int) config('tajweed.izhar_max_ghunnah_ms', 280);
             $usedOppositeRuleFallback = false;
 
             if (
@@ -417,6 +423,10 @@ class TajweedController extends Controller
                 'cnn_prediction' => $cnnPrediction,
                 'cnn_confidence' => $cnnConfidence,
                 'feature_other_confidence' => $featureOtherConfidence,
+                'ghunnah_duration_ms' => $ghunnahDurationMs,
+                'ikhfa_min_ghunnah_ms' => $ikhfaMinGhunnahMs,
+                'ikhfa_min_local_ghunnah_ms' => $ikhfaMinLocalGhunnahMs,
+                'izhar_max_ghunnah_ms' => $izharMaxGhunnahMs,
                 'used_opposite_rule_fallback' => $usedOppositeRuleFallback,
                 'is_unrelated_audio' => $isUnrelatedAudio,
             ]);
@@ -434,10 +444,26 @@ class TajweedController extends Controller
 
             $transcribeOutput = 'Transcription skipped.';
             $transcribeResult = ['status' => 'skipped', 'text' => ''];
-            $transcribedText = $this->resolveTranscriptionText('', $selectedAyah);
+            $browserTranscript = trim((string) $browserTranscript);
+            $browserTranscriptLetterCount = $this->countArabicLetters($browserTranscript);
+            $minBrowserTranscriptLetters = (int) config('tajweed.min_browser_transcript_letters', 8);
+            $hasBrowserTranscript = $browserTranscript !== '' && $browserTranscriptLetterCount >= $minBrowserTranscriptLetters;
+
+            if ($browserTranscript !== '' && !$hasBrowserTranscript) {
+                \Log::info('Ignoring short browser transcript for Tajweed analysis', [
+                    'audio_id' => $audioRecitation->id,
+                    'browser_transcript' => $browserTranscript,
+                    'arabic_letter_count' => $browserTranscriptLetterCount,
+                    'minimum_letters' => $minBrowserTranscriptLetters,
+                ]);
+
+                $browserTranscript = '';
+            }
+
+            $transcribedText = $this->resolveTranscriptionText($browserTranscript, $selectedAyah);
             $quranMatch = null;
 
-            if (trim((string) $selectedAyah) === '' && config('tajweed.enable_transcription', false)) {
+            if (!$hasBrowserTranscript && trim((string) $selectedAyah) === '' && config('tajweed.enable_transcription', false)) {
                 [$transcribeOutput, $transcribeResult] = $this->runPythonJson(
                     $pythonBinary,
                     base_path('python/transcribe.py'),
@@ -467,7 +493,14 @@ class TajweedController extends Controller
                 }
             }
 
-            if (config('tajweed.enable_diacritization', true)) {
+            $transcribedTextHasDiacritics = (bool) preg_match('/[\x{064B}-\x{065F}\x{0670}\x{06E1}]/u', $transcribedText);
+
+            if (
+                $transcribedText !== 'Unable to transcribe audio'
+                && $this->countArabicLetters($transcribedText) >= $minBrowserTranscriptLetters
+                && !$transcribedTextHasDiacritics
+                && config('tajweed.enable_diacritization', true)
+            ) {
                 $transcribedText = $quranMatch
                     ? $transcribedText
                     : $this->geminiFeedbackService->diacritizeArabic($transcribedText);
@@ -483,23 +516,148 @@ class TajweedController extends Controller
                 );
             }
 
+            $selectedAyahText = trim((string) $selectedAyah);
+            $transcribedTextHasTajweedMarks = (bool) preg_match('/[\x{064B}-\x{065F}\x{0670}\x{06E1}]/u', $transcribedText);
+            $ruleDetectionText = $selectedAyahText !== ''
+                ? $selectedAyahText
+                : ($transcribedTextHasTajweedMarks ? trim($transcribedText) : '');
+            $ruleDetectionSource = $selectedAyahText !== '' ? 'selected ayah' : 'transcription';
+            $ruleTargets = $ruleDetectionText !== ''
+                ? $this->detectTajweedTargets($ruleDetectionText)
+                : [];
+            $ruleContextChecked = $ruleDetectionText !== '';
+            $ruleContextValid = !$ruleContextChecked || count($ruleTargets) > 0;
+            $detectedErrors = [];
+            $suggestions = [];
+            $hasRequiredGhunnah = $selectedRule !== 'ikhfa' || $ghunnahDurationMs >= $ikhfaMinGhunnahMs;
+            $targetResults = [];
+
+            if ($ruleContextChecked) {
+                if ($ruleContextValid) {
+                    $targetResults = $this->analyzeTajweedTargetResults(
+                        $ruleTargets,
+                        data_get($result, 'quality', []),
+                        $ikhfaMinGhunnahMs,
+                        $ikhfaMinLocalGhunnahMs,
+                        $izharMaxGhunnahMs
+                    );
+                    $targetSummary = implode(', ', array_slice($this->summarizeTajweedTargets($ruleTargets), 0, 3));
+                    $targetCounts = collect($ruleTargets)->countBy('rule');
+                    $feedback .= " Rule scan found " . count($ruleTargets) . " tajweed target"
+                        . (count($ruleTargets) === 1 ? '' : 's')
+                        . " (" . (int) ($targetCounts['ikhfa'] ?? 0) . " Ikhfa, " . (int) ($targetCounts['izhar'] ?? 0) . " Izhar)"
+                        . ($targetSummary !== '' ? ": {$targetSummary}." : '.');
+                } else {
+                    $detectedRules = collect($ruleTargets)
+                        ->pluck('rule')
+                        ->unique()
+                        ->values()
+                        ->implode(', ');
+
+                    $detectedErrors[] = [
+                        'error' => ucfirst($ruleDetectionSource) . ' does not contain an Ikhfa or Izhar trigger.',
+                        'type' => 'rule_target_missing',
+                        'expected_rule' => 'ikhfa_or_izhar',
+                        'detected_rules' => $detectedRules !== '' ? $detectedRules : 'none',
+                        'targets' => $ruleTargets,
+                    ];
+
+                    $suggestions[] = 'Choose an ayah segment that contains nun sakinah or tanwin followed by an Ikhfa or Izhar letter.';
+                    $feedback .= " Rule scan did not find an Ikhfa or Izhar target in the {$ruleDetectionSource}, so this attempt needs the correct ayah chunk before the ML result is trusted.";
+                }
+            }
+
+            if ($isUnrelatedAudio) {
+                $detectedErrors[] = [
+                    'error' => 'Unrelated or unclear audio',
+                    'type' => 'unrelated_audio',
+                ];
+
+                $suggestions = array_merge($suggestions, [
+                    'Record only the Quran recitation segment for the selected rule.',
+                    'Avoid music, speech, silence, or background noise.',
+                    'Use the Other dataset in the admin panel to improve unrelated-audio detection.',
+                ]);
+            }
+
+            if (count($targetResults) === 0 && !$isUnrelatedAudio && $selectedRule === 'ikhfa' && !$hasRequiredGhunnah) {
+                $detectedErrors[] = [
+                    'error' => 'Ghunnah appears too short or unclear for Ikhfa.',
+                    'type' => 'weak_ghunnah',
+                    'ghunnah_duration_ms' => $ghunnahDurationMs,
+                    'minimum_duration_ms' => $ikhfaMinGhunnahMs,
+                ];
+
+                $suggestions[] = 'For Ikhfa, hide the nun or tanwin sound and hold the nasal ghunnah for about two harakah before the next letter.';
+                $feedback = "Recitation appears incorrect for Ikhfa. The recording sounds too clear because the estimated ghunnah is only "
+                    . round($ghunnahDurationMs)
+                    . "ms; try holding the nasal sound longer before the next letter.";
+            }
+
+            foreach ($targetResults as $targetResult) {
+                if (($targetResult['status'] ?? null) === 'correct') {
+                    continue;
+                }
+
+                $detectedErrors[] = [
+                    'error' => $targetResult['reason'] ?? 'Tajweed target needs practice.',
+                    'type' => 'target_' . ($targetResult['rule'] ?? 'tajweed') . '_error',
+                    'target' => $targetResult,
+                ];
+            }
+
+            if (count($targetResults) > 0) {
+                $detectedErrors[] = [
+                    'error' => 'Per-target Tajweed analysis completed.',
+                    'type' => 'target_analysis',
+                    'targets' => $targetResults,
+                ];
+
+                foreach ($targetResults as $targetResult) {
+                    $suggestions[] = ucfirst($targetResult['rule'] ?? 'target')
+                        . ' in "' . ($targetResult['snippet'] ?? '') . '": '
+                        . ucfirst($targetResult['status'] ?? 'unknown')
+                        . ' - ' . ($targetResult['reason'] ?? 'checked');
+                }
+
+                $incorrectTargets = collect($targetResults)
+                    ->filter(fn(array $targetResult): bool => ($targetResult['status'] ?? null) !== 'correct')
+                    ->values();
+
+                $targetSummaryText = collect($targetResults)
+                    ->map(fn(array $targetResult): string => ucfirst($targetResult['rule'] ?? 'target')
+                        . ' "' . ($targetResult['snippet'] ?? '') . '" = '
+                        . ucfirst($targetResult['status'] ?? 'unknown'))
+                    ->take(5)
+                    ->implode('; ');
+
+                if ($incorrectTargets->isEmpty()) {
+                    $feedback = "Good recitation. All detected Ikhfa and Izhar targets in this ayah look correct. {$targetSummaryText}.";
+                } else {
+                    $feedback = "Some tajweed targets need practice. " . $incorrectTargets
+                        ->map(fn(array $targetResult): string => ucfirst($targetResult['rule'] ?? 'target') . ' in "' . ($targetResult['snippet'] ?? '') . '": ' . ($targetResult['reason'] ?? 'needs practice'))
+                        ->take(3)
+                        ->implode(' ')
+                        . " Target summary: {$targetSummaryText}.";
+                }
+
+                $suggestions[] = 'Review each highlighted target: Ikhfa needs ghunnah, while Izhar should stay clear without ghunnah.';
+            }
+
+            $targetLevelValid = count($targetResults) === 0
+                || collect($targetResults)->every(fn(array $targetResult): bool => ($targetResult['status'] ?? null) === 'correct');
+            $audioRuleValid = count($targetResults) > 0
+                ? $targetLevelValid
+                : ($hasRequiredGhunnah && $prediction == $selectedRule);
+
             $analysisResult->update([
                 'processing_status' => 'completed',
                 'feedback_message' => $feedback,
                 'transcribed_text' => $transcribedText,
                 'confidence_score' => $confidence,
-                'correctness' => (!$isUnrelatedAudio && $prediction == $selectedRule) ? 'correct' : 'incorrect',
-                'detected_errors' => $isUnrelatedAudio ? [
-                    [
-                        'error' => 'Unrelated or unclear audio',
-                        'type' => 'unrelated_audio',
-                    ],
-                ] : null,
-                'suggestions' => $isUnrelatedAudio ? [
-                    'Record only the Quran recitation segment for the selected rule.',
-                    'Avoid music, speech, silence, or background noise.',
-                    'Use the Other dataset in the admin panel to improve unrelated-audio detection.',
-                ] : null,
+                'correctness' => (!$isUnrelatedAudio && $ruleContextValid && $audioRuleValid) ? 'correct' : 'incorrect',
+                'detected_errors' => count($detectedErrors) > 0 ? $detectedErrors : null,
+                'suggestions' => count($suggestions) > 0 ? $suggestions : null,
             ]);
 
             session([
@@ -639,6 +797,237 @@ class TajweedController extends Controller
         $whisperText = trim((string) $whisperText);
 
         return $whisperText !== '' ? $whisperText : 'Unable to transcribe audio';
+    }
+
+    private function detectTajweedTargets(?string $text): array
+    {
+        $text = trim((string) $text);
+
+        if ($text === '') {
+            return [];
+        }
+
+        $chars = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $targets = [];
+        $ikhfaLetters = array_flip([
+            "\u{062A}", "\u{062B}", "\u{062C}", "\u{062F}", "\u{0630}",
+            "\u{0632}", "\u{0633}", "\u{0634}", "\u{0635}", "\u{0636}",
+            "\u{0637}", "\u{0638}", "\u{0641}", "\u{0642}", "\u{0643}",
+        ]);
+        $izharLetters = array_flip([
+            "\u{0621}", "\u{0627}", "\u{0647}", "\u{0639}", "\u{062D}", "\u{063A}", "\u{062E}",
+        ]);
+        $count = count($chars);
+        $totalLetters = count(array_filter($chars, fn(string $item): bool => $this->isArabicLetterForTajweed($item)));
+
+        foreach ($chars as $index => $char) {
+            $isTanween = (bool) preg_match('/[\x{064B}\x{064C}\x{064D}]/u', $char);
+            $isNoon = $this->normalizeArabicLetterForTajweed($char) === "\u{0646}";
+            $hasSukun = false;
+            $hasNoonVowel = false;
+            $markEnd = $index;
+
+            if ($isNoon) {
+                for ($i = $index + 1; $i < $count && $this->isArabicMarkForTajweed($chars[$i]); $i++) {
+                    $markEnd = $i;
+                    $hasSukun = $hasSukun || in_array($chars[$i], ["\u{0652}", "\u{06E1}"], true);
+                    $hasNoonVowel = $hasNoonVowel || (bool) preg_match('/[\x{064B}-\x{0650}\x{0654}\x{0655}]/u', $chars[$i]);
+                }
+            }
+
+            if (!$isTanween && !$isNoon) {
+                continue;
+            }
+
+            $nextIndex = $this->findNextArabicLetterIndex($chars, $markEnd + 1);
+
+            if ($nextIndex === null) {
+                continue;
+            }
+
+            $nextLetter = $this->normalizeArabicLetterForTajweed($chars[$nextIndex]);
+            $rule = null;
+
+            if (isset($ikhfaLetters[$nextLetter])) {
+                $rule = 'ikhfa';
+            } elseif (isset($izharLetters[$nextLetter])) {
+                $rule = 'izhar';
+            }
+
+            if ($rule === null) {
+                continue;
+            }
+
+            $hasImplicitNoonSakinah = $isNoon && !$hasSukun && !$hasNoonVowel;
+
+            if (!$isTanween && !$hasSukun && !$hasImplicitNoonSakinah) {
+                continue;
+            }
+
+            $start = $isTanween || $isNoon
+                ? ($this->findPreviousArabicLetterIndex($chars, $index - 1) ?? $index)
+                : $index;
+            $snippetStart = max(0, $start - 2);
+            $snippetEnd = min($count - 1, $nextIndex + 2);
+
+            $targets[] = [
+                'rule' => $rule,
+                'source' => $isTanween ? 'tanwin' : 'noon_sakinah',
+                'trigger' => $isTanween ? 'tanwin + ' . $chars[$nextIndex] : "\u{0646}\u{0652}" . ' + ' . $chars[$nextIndex],
+                'next_letter' => $chars[$nextIndex],
+                'snippet' => implode('', array_slice($chars, $snippetStart, $snippetEnd - $snippetStart + 1)),
+                'position' => $start,
+                'end_position' => $nextIndex,
+                'letter_position' => $this->countArabicLettersBefore($chars, $start),
+                'total_letters' => $totalLetters,
+            ];
+        }
+
+        return $targets;
+    }
+
+    private function summarizeTajweedTargets(array $targets): array
+    {
+        return array_map(
+            fn(array $target): string => ($target['trigger'] ?? 'target') . ' in "' . ($target['snippet'] ?? '') . '"',
+            $targets
+        );
+    }
+
+    private function analyzeTajweedTargetResults(array $targets, array $quality, int $ikhfaMinGhunnahMs, int $ikhfaMinLocalGhunnahMs, int $izharMaxGhunnahMs): array
+    {
+        $audioDurationMs = max(1.0, (float) data_get($quality, 'duration_ms', 0));
+        $globalGhunnahMs = (float) data_get($quality, 'ghunnah_duration_ms', 0);
+        $segments = array_values(array_filter(
+            (array) data_get($quality, 'ghunnah_segments', []),
+            fn($segment): bool => is_array($segment)
+        ));
+        $matchWindowMs = (int) config('tajweed.target_match_window_ms', 900);
+
+        return array_map(function (array $target) use ($audioDurationMs, $globalGhunnahMs, $segments, $matchWindowMs, $ikhfaMinGhunnahMs, $ikhfaMinLocalGhunnahMs, $izharMaxGhunnahMs): array {
+            $ratio = $this->targetPositionRatio($target);
+            $expectedMs = $ratio * $audioDurationMs;
+            $nearbyGhunnahMs = $this->longestGhunnahNearTime($segments, $expectedMs, $matchWindowMs);
+            $rule = $target['rule'] ?? 'unknown';
+            $status = 'unknown';
+            $reason = 'Could not evaluate this target.';
+
+            if ($rule === 'ikhfa') {
+                $hasLocalGhunnah = $nearbyGhunnahMs >= $ikhfaMinLocalGhunnahMs;
+                $hasGlobalGhunnah = $globalGhunnahMs >= $ikhfaMinGhunnahMs;
+                $status = ($hasLocalGhunnah || $hasGlobalGhunnah) ? 'correct' : 'incorrect';
+                $reason = $hasLocalGhunnah
+                    ? 'Ghunnah detected near this Ikhfa target.'
+                    : ($hasGlobalGhunnah
+                        ? 'Ghunnah detected in the recording; local timing is approximate for this Ikhfa target.'
+                        : 'Ghunnah is too short or unclear for this Ikhfa target.');
+            } elseif ($rule === 'izhar') {
+                $status = $nearbyGhunnahMs <= $izharMaxGhunnahMs ? 'correct' : 'incorrect';
+                $reason = $status === 'correct'
+                    ? 'Pronunciation looks clear near this Izhar target.'
+                    : 'Nasal sound was detected near this Izhar target; Izhar should be clear.';
+            }
+
+            return array_merge($target, [
+                'status' => $status,
+                'reason' => $reason,
+                'expected_time_ms' => round($expectedMs, 2),
+                'nearby_ghunnah_ms' => round($nearbyGhunnahMs, 2),
+                'global_ghunnah_ms' => round($globalGhunnahMs, 2),
+            ]);
+        }, $targets);
+    }
+
+    private function targetPositionRatio(array $target): float
+    {
+        $totalLetters = max(1, (int) ($target['total_letters'] ?? 1));
+        $letterPosition = max(0, (int) ($target['letter_position'] ?? 0));
+
+        return min(1.0, max(0.0, ($letterPosition + 0.5) / $totalLetters));
+    }
+
+    private function longestGhunnahNearTime(array $segments, float $expectedMs, int $matchWindowMs): float
+    {
+        $longest = 0.0;
+
+        foreach ($segments as $segment) {
+            $startMs = (float) ($segment['start_ms'] ?? 0);
+            $endMs = (float) ($segment['end_ms'] ?? $startMs);
+            $durationMs = (float) ($segment['duration_ms'] ?? max(0, $endMs - $startMs));
+            $centerMs = ($startMs + $endMs) / 2;
+
+            if (abs($centerMs - $expectedMs) <= $matchWindowMs || ($expectedMs >= $startMs && $expectedMs <= $endMs)) {
+                $longest = max($longest, $durationMs);
+            }
+        }
+
+        return $longest;
+    }
+
+    private function normalizeArabicLetterForTajweed(string $letter): string
+    {
+        return strtr($letter, [
+            "\u{0623}" => "\u{0621}",
+            "\u{0625}" => "\u{0621}",
+            "\u{0622}" => "\u{0621}",
+            "\u{0624}" => "\u{0621}",
+            "\u{0626}" => "\u{0621}",
+            "\u{0671}" => "\u{0627}",
+        ]);
+    }
+
+    private function isArabicMarkForTajweed(string $char): bool
+    {
+        return (bool) preg_match('/[\x{0610}-\x{061A}\x{064B}-\x{065F}\x{0670}\x{06D6}-\x{06ED}\x{08D3}-\x{08FF}\x{0640}]/u', $char);
+    }
+
+    private function isArabicLetterForTajweed(string $char): bool
+    {
+        return (bool) preg_match('/[\x{0621}-\x{064A}\x{0671}]/u', $char);
+    }
+
+    private function findPreviousArabicLetterIndex(array $chars, int $from): ?int
+    {
+        for ($i = $from; $i >= 0; $i--) {
+            if ($this->isArabicLetterForTajweed($chars[$i])) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private function findNextArabicLetterIndex(array $chars, int $from): ?int
+    {
+        $count = count($chars);
+
+        for ($i = $from; $i < $count; $i++) {
+            if ($this->isArabicLetterForTajweed($chars[$i])) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private function countArabicLettersBefore(array $chars, int $position): int
+    {
+        $count = 0;
+
+        for ($i = 0; $i < $position; $i++) {
+            if (isset($chars[$i]) && $this->isArabicLetterForTajweed($chars[$i])) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    private function countArabicLetters(string $text): int
+    {
+        preg_match_all('/[\x{0621}-\x{064A}\x{0671}]/u', $text, $matches);
+
+        return count($matches[0] ?? []);
     }
 
     /**
@@ -960,6 +1349,12 @@ class TajweedController extends Controller
     public function ikhfaHaqiqi()
     {
         return view('tajweed.ikhfaHaqiqi');
+    }
+
+    // Show combined Ikhfa + Izhar checker page
+    public function checker()
+    {
+        return view('tajweed.checker');
     }
 
     // Show Izhar Halqi page

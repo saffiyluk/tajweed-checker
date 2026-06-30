@@ -3,914 +3,1008 @@
 @section('title', 'My Recitations')
 
 @section('content')
-    <div class="container py-4">
-        <!-- Page Header -->
-        <div class="page-header mb-5">
-            <div class="d-flex align-items-center justify-content-between mb-4">
-                <div>
-                    <h1 class="mb-2">
-                        <i class="fas fa-microphone-alt me-3"></i>My Recitations
-                    </h1>
-                    <p class="text-muted mb-0">Review and listen to all your recordings</p>
-                </div>
-                <div class="d-flex gap-2">
-                    <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-primary">
-                        <i class="fas fa-plus me-2"></i>New Recording
-                    </a>
-                </div>
-            </div>
+@php
+    $items = $recitations->getCollection();
 
-            @if($recitations->isEmpty())
-                <!-- Empty State -->
-                <div class="empty-state text-center py-5">
-                    <div class="empty-icon mb-4">
-                        <i class="fas fa-inbox"></i>
-                    </div>
-                    <h3 class="mb-3">No Recitations Yet</h3>
-                    <p class="text-muted mb-4">Start by recording or uploading your first audio file.</p>
-                    <div class="d-flex gap-3 justify-content-center">
-                        <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-primary">
-                            <i class="fas fa-volume-down me-2"></i>Ikhfa Haqiqi
-                        </a>
-                        <a href="{{ route('tajweed.izhar-halqi') }}" class="btn btn-success">
-                            <i class="fas fa-volume-up me-2"></i>Izhar Halqi
-                        </a>
-                    </div>
-                </div>
-            @else
-                <!-- Statistics Cards -->
-                <div class="stats-grid mb-5">
-                    <div class="stat-card">
-                        <div class="stat-icon total">
-                            <i class="fas fa-music"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ $recitations->total() }}</h3>
-                            <p>Total Recitations</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon correct">
-                            <i class="fas fa-check-circle"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ $recitations->getCollection()->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'correct')->count() }}
-                            </h3>
-                            <p>Correct Pronunciations</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon improve">
-                            <i class="fas fa-exclamation-circle"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ $recitations->getCollection()->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'incorrect')->count() }}
-                            </h3>
-                            <p>Needs Improvement</p>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon pending">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="stat-content">
-                            <h3>{{ $recitations->getCollection()->filter(fn($r) => !$r->analysisResult || $r->analysisResult->processing_status === 'pending')->count() }}
-                            </h3>
-                            <p>Pending Analysis</p>
-                        </div>
-                    </div>
-                </div>
+    $correctCount = $items->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'correct')->count();
+    $incorrectCount = $items->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'incorrect')->count();
+    $pendingCount = $items->filter(fn($r) => !$r->analysisResult || in_array($r->analysisResult->processing_status, ['pending', 'processing']))->count();
+@endphp
 
-                <!-- Filter & Actions Bar -->
-                <div class="action-bar mb-4">
-                    <div class="row g-3 align-items-center">
-                        <div class="col-md-4">
-                            <div class="filter-group">
-                                <label><i class="fas fa-filter me-2"></i>Filter by Rule:</label>
-                                <select class="form-select" id="ruleFilter">
-                                    <option value="">All Rules</option>
-                                    <option value="ikhfa">Ikhfa Haqiqi</option>
-                                    <option value="izhar">Izhar Halqi</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="filter-group">
-                                <label><i class="fas fa-tag me-2"></i>Filter by Status:</label>
-                                <select class="form-select" id="statusFilter">
-                                    <option value="">All Status</option>
-                                    <option value="correct">Correct</option>
-                                    <option value="incorrect">Needs Improvement</option>
-                                    <option value="pending">Pending</option>
-                                    <option value="processing">Processing</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="filter-group">
-                                <label><i class="fas fa-sort me-2"></i>Sort by:</label>
-                                <select class="form-select" id="sortFilter">
-                                    <option value="newest">Newest First</option>
-                                    <option value="oldest">Oldest First</option>
-                                    <option value="correct">Correct First</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+<style>
+    body {
+        background:
+            radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 32%),
+            radial-gradient(circle at bottom right, rgba(194, 153, 80, 0.12), transparent 32%),
+            linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
+        min-height: 100vh;
+    }
 
-                <!-- Delete Confirmation Modal -->
-                <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-                    <div class="modal-dialog">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                                    <i class="fas fa-trash-alt text-danger me-2"></i>Delete Recording
-                                </h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="warning-icon text-center mb-3">
-                                    <i class="fas fa-exclamation-triangle fa-3x text-warning"></i>
-                                </div>
-                                <p class="text-center mb-3">Are you sure you want to delete this recording?</p>
-                                <div class="alert alert-warning">
-                                    <i class="fas fa-info-circle me-2"></i>
-                                    This action cannot be undone. The recording and its analysis will be permanently deleted.
-                                </div>
-                            </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                                <form id="deleteForm" method="POST" style="display: inline;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-danger">
-                                        <i class="fas fa-trash-alt me-2"></i>Delete Recording
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+    .history-page {
+        color: #0f172a;
+    }
 
-                <!-- Recitations Grid -->
-                <div class="row g-4 mb-5" id="recitationsGrid">
-                    @foreach($recitations as $recitation)
-                        <div class="col-lg-6 col-xl-4">
-                            <div class="recitation-card">
-                                <!-- Card Header -->
-                                <div class="card-header">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <div class="flex-grow-1">
-                                            <h6 class="card-title">
-                                                <i class="fas fa-file-audio me-2"></i>
-                                                {{ Str::limit($recitation->original_filename, 25) }}
-                                            </h6>
-                                            <small class="text-muted">
-                                                <i class="fas fa-calendar me-1"></i>
-                                                {{ $recitation->created_at->format('M d, Y') }}
-                                            </small>
-                                        </div>
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-secondary" type="button"
-                                                data-bs-toggle="dropdown">
-                                                <i class="fas fa-ellipsis-v"></i>
-                                            </button>
-                                            <ul class="dropdown-menu">
-                                                <li>
-                                                    <a class="dropdown-item" href="#" data-bs-toggle="modal"
-                                                        data-bs-target="#deleteModal"
-                                                        onclick="setDeleteUrl('{{ route('tajweed.delete', $recitation->id) }}')">
-                                                        <i class="fas fa-trash-alt me-2"></i>Delete
-                                                    </a>
-                                                </li>
-                                                <li>
-                                                    <a class="dropdown-item"
-                                                        href="{{ route('tajweed.download', $recitation->id) }}">
-                                                        <i class="fas fa-download me-2"></i>Download
-                                                    </a>
-                                                </li>
-                                                @if($recitation->analysisResult)
-                                                    <li>
-                                                        <a class="dropdown-item" href="{{ route('tajweed.result', $recitation->id) }}">
-                                                            <i class="fas fa-chart-line me-2"></i>View Analysis
-                                                        </a>
-                                                    </li>
-                                                @endif
-                                            </ul>
-                                        </div>
-                                    </div>
+    .history-hero {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: white;
+        border-radius: 28px;
+        padding: 2rem;
+        box-shadow: 0 22px 60px rgba(37, 99, 235, 0.18);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1.5rem;
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+    }
 
-                                    <!-- Audio Player -->
-                                    @if($recitation->firebase_url)
-                                        @php
-                                            $ext = pathinfo($recitation->firebase_url, PATHINFO_EXTENSION);
-                                            $type = match (strtolower($ext)) {
-                                                'mp3' => 'audio/mpeg',
-                                                'wav' => 'audio/wav',
-                                                'webm' => 'audio/webm',
-                                                default => 'audio/mpeg',
-                                            };
-                                        @endphp
-                                        <div class="audio-player mb-2">
-                                            <audio controls onerror="handleAudioError(this, {{ $recitation->id }})">
-                                                <source src="{{ $recitation->firebase_url }}" type="{{ $type }}">
-                                                Your browser does not support audio.
-                                            </audio>
-                                            <small class="text-muted d-block mt-1">
-                                                <i class="fas fa-link me-1"></i>Firebase Storage
-                                            </small>
-                                        </div>
-                                    @elseif($recitation->audio_file_path)
-                                        <div class="audio-player mb-2">
-                                            @php
-                                                $localPath = $recitation->audio_file_path;
-                                                if (strpos($localPath, 'public/') === 0) {
-                                                    $localPath = substr($localPath, 7); // Remove 'public/' prefix
-                                                }
-                                            @endphp
-                                            <audio controls onerror="handleAudioError(this, {{ $recitation->id }})">
-                                                @if(Storage::disk('public')->exists($localPath))
-                                                    <source src="{{ Storage::disk('public')->url($localPath) }}" type="audio/mpeg">
-                                                    <!-- Remove the second source if it's the same URL -->
-                                                @endif
-                                                Your browser does not support audio.
-                                            </audio>
-                                            <small class="text-muted d-block mt-1">
-                                                <i class="fas fa-hdd me-1"></i>Local Storage
-                                            </small>
-                                        </div>
-                                    @endif
+    .history-hero::after {
+        content: "۞";
+        position: absolute;
+        right: 2rem;
+        top: -1.2rem;
+        font-size: 8rem;
+        opacity: 0.08;
+        font-family: serif;
+    }
 
-                                    <!-- Rule Badge -->
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span class="rule-badge {{ $recitation->tajweed_rule }}">
-                                            @if($recitation->tajweed_rule === 'ikhfa')
-                                                Ikhfa Haqiqi
-                                            @elseif($recitation->tajweed_rule === 'izhar')
-                                                Izhar Halqi
-                                            @else
-                                                {{ $recitation->tajweed_rule }}
-                                            @endif
-                                        </span>
-                                        @if($recitation->duration_seconds)
-                                            <span class="duration-badge">
-                                                <i class="fas fa-clock me-1"></i>{{ gmdate('i:s', $recitation->duration_seconds) }}
-                                            </span>
-                                        @endif
-                                    </div>
-                                </div>
+    .hero-content,
+    .hero-actions {
+        position: relative;
+        z-index: 1;
+    }
 
-                                <!-- Card Body -->
-                                <div class="card-body">
-                                    <!-- Analysis Status -->
-                                    @if($recitation->analysisResult)
-                                        <div class="analysis-status mb-3">
-                                            <small class="text-muted mb-2 d-block">Analysis Status:</small>
-                                            @if($recitation->analysisResult->processing_status === 'completed')
-                                                @if($recitation->analysisResult->correctness === 'correct')
-                                                    <div class="status-correct">
-                                                        <i class="fas fa-check-circle me-2"></i>
-                                                        <span>Correct Pronunciation</span>
-                                                        <span
-                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100/100) }}%</span>
-                                                    </div>
-                                                @else
-                                                    <div class="status-incorrect">
-                                                        <i class="fas fa-times-circle me-2"></i>
-                                                        <span>Needs Improvement</span>
-                                                        <span
-                                                            class="confidence-score">{{ round($recitation->analysisResult->confidence_score * 100/100) }}%</span>
-                                                    </div>
-                                                @endif
-                                            @elseif($recitation->analysisResult->processing_status === 'processing')
-                                                <div class="status-processing">
-                                                    <i class="fas fa-spinner fa-spin me-2"></i>
-                                                    <span>Analyzing...</span>
-                                                </div>
-                                            @elseif($recitation->analysisResult->processing_status === 'failed')
-                                                <div class="status-failed">
-                                                    <i class="fas fa-times me-2"></i>
-                                                    <span>Analysis Failed</span>
-                                                </div>
-                                            @else
-                                                <div class="status-pending">
-                                                    <i class="fas fa-hourglass-start me-2"></i>
-                                                    <span>Pending Analysis</span>
-                                                </div>
-                                            @endif
-                                        </div>
+    .hero-kicker,
+    .section-label {
+        display: inline-flex;
+        align-items: center;
+        color: #facc15;
+        font-size: 0.78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.55rem;
+    }
 
-                                        <!-- Feedback Preview -->
-                                        @if($recitation->analysisResult->feedback_message)
-                                            <div class="feedback-preview">
-                                                <small class="text-muted mb-2 d-block">Feedback:</small>
-                                                <p class="feedback-text">
-                                                    {{ Str::limit($recitation->analysisResult->feedback_message, 100) }}
-                                                </p>
-                                            </div>
-                                        @endif
-                                    @else
-                                        <div class="alert alert-secondary">
-                                            <i class="fas fa-info-circle me-2"></i>Analysis pending
-                                        </div>
-                                    @endif
-                                </div>
+    .history-hero h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 900;
+        letter-spacing: -0.04em;
+    }
 
-                                <!-- Card Footer -->
-                                <div class="card-footer">
-                                    <div class="d-flex gap-2">
-                                        @if($recitation->analysisResult && $recitation->analysisResult->processing_status === 'completed')
-                                            <a href="{{ route('tajweed.result', $recitation->id) }}"
-                                                class="btn btn-primary flex-grow-1">
-                                                <i class="fas fa-eye me-2"></i>View Results
-                                            </a>
-                                        @else
-                                            <button class="btn btn-secondary flex-grow-1" disabled>
-                                                <i class="fas fa-lock me-2"></i>In Progress
-                                            </button>
-                                        @endif
-                                        <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
-                                            onclick="setDeleteUrl('{{ route('tajweed.delete', $recitation->id) }}')">
-                                            <i class="fas fa-trash-alt"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
+    .history-hero p {
+        margin: 0.75rem 0 0;
+        color: rgba(255,255,255,0.82);
+        line-height: 1.7;
+    }
 
-                <!-- Pagination -->
-                @if($recitations->hasPages())
-                    <div class="pagination-wrapper mb-4">
-                        {{ $recitations->links('pagination::bootstrap-4') }}
-                    </div>
-                @endif
-            @endif
+    .hero-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
 
-            <!-- Bottom Actions -->
-            <div class="bottom-actions mt-5 pt-4 border-top">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                    <div>
-                        <a href="{{ route('home') }}" class="btn btn-outline-primary">
-                            <i class="fas fa-home me-2"></i>Dashboard
-                        </a>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-primary">
-                            <i class="fas fa-volume-down me-2"></i>Ikhfa Haqiqi
-                        </a>
-                        <a href="{{ route('tajweed.izhar-halqi') }}" class="btn btn-success">
-                            <i class="fas fa-volume-up me-2"></i>Izhar Halqi
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    .btn-hero-primary,
+    .btn-hero-light,
+    .btn-main,
+    .btn-soft,
+    .btn-danger-soft {
+        border-radius: 16px;
+        padding: 0.78rem 1rem;
+        font-weight: 900;
+        text-decoration: none;
+        border: none;
+    }
 
-    <style>
-        :root {
-            --primary: #2563eb;
-            --primary-light: #3b82f6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --info: #06b6d4;
-            --light: #f8fafc;
-            --dark: #1e293b;
-            --gray: #64748b;
-            --border: #e2e8f0;
-            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
-            --radius: 12px;
-        }
+    .btn-hero-primary {
+        background: white;
+        color: #1d4ed8;
+    }
 
-        /* Page Header */
-        .page-header h1 {
-            color: var(--dark);
-            font-weight: 700;
-            font-size: 2.25rem;
-        }
+    .btn-hero-primary:hover {
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
 
-        .page-header h1 i {
-            color: var(--primary);
-        }
+    .btn-hero-light {
+        background: rgba(255,255,255,0.14);
+        color: white;
+        border: 1px solid rgba(255,255,255,0.25);
+    }
 
-        /* Empty State */
-        .empty-state {
-            background: white;
-            border-radius: var(--radius);
-            padding: 4rem 2rem;
-            box-shadow: var(--shadow);
-        }
+    .btn-hero-light:hover {
+        background: rgba(255,255,255,0.22);
+        color: white;
+    }
 
-        .empty-icon {
-            font-size: 4rem;
-            color: var(--gray);
-            opacity: 0.5;
-        }
+    .btn-main {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: white;
+        box-shadow: 0 12px 26px rgba(37, 99, 235, 0.20);
+    }
 
-        .empty-state h3 {
-            color: var(--dark);
-            font-weight: 600;
-        }
+    .btn-main:hover {
+        color: white;
+        transform: translateY(-1px);
+    }
 
-        /* Statistics Grid */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
+    .btn-soft {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border: 1px solid #dbeafe;
+    }
 
-        .stat-card {
-            background: white;
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            box-shadow: var(--shadow);
-            transition: transform 0.3s ease;
-        }
+    .btn-soft:hover {
+        background: #dbeafe;
+        color: #1d4ed8;
+    }
 
-        .stat-card:hover {
-            transform: translateY(-5px);
-        }
+    .btn-danger-soft {
+        background: #fff1f2;
+        color: #be123c;
+        border: 1px solid #fecdd3;
+    }
 
-        .stat-icon {
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-        }
+    .btn-danger-soft:hover {
+        background: #e11d48;
+        color: white;
+    }
 
-        .stat-icon.total {
-            background: linear-gradient(135deg, var(--primary), var(--primary-light));
-        }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
 
-        .stat-icon.correct {
-            background: linear-gradient(135deg, var(--success), #34d399);
-        }
+    .stat-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+        padding: 1.15rem;
+        box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+    }
 
-        .stat-icon.improve {
-            background: linear-gradient(135deg, var(--warning), #fbbf24);
-        }
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        display: grid;
+        place-items: center;
+        color: white;
+        flex-shrink: 0;
+    }
 
-        .stat-icon.pending {
-            background: linear-gradient(135deg, var(--info), #22d3ee);
-        }
+    .stat-icon.total { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+    .stat-icon.correct { background: linear-gradient(135deg, #16a34a, #15803d); }
+    .stat-icon.improve { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .stat-icon.pending { background: linear-gradient(135deg, #06b6d4, #0891b2); }
 
-        .stat-content h3 {
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0;
-            color: var(--dark);
-        }
+    .stat-card h3 {
+        margin: 0;
+        font-size: 1.65rem;
+        font-weight: 900;
+        letter-spacing: -0.04em;
+    }
 
-        .stat-content p {
-            margin: 0;
-            color: var(--gray);
-            font-size: 0.875rem;
-        }
+    .stat-card p {
+        margin: 0;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }
 
-        /* Action Bar */
-        .action-bar {
-            background: white;
-            border-radius: var(--radius);
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
-            margin-bottom: 2rem;
-        }
+    .clean-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        padding: 1.35rem;
+        box-shadow: 0 14px 38px rgba(15, 23, 42, 0.07);
+    }
 
-        .filter-group label {
-            font-size: 0.875rem;
-            color: var(--gray);
-            margin-bottom: 0.5rem;
-            display: block;
-            font-weight: 500;
-        }
+    .filter-card {
+        margin-bottom: 1.5rem;
+    }
 
-        .filter-group label i {
-            color: var(--primary);
-        }
+    .filter-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+    }
 
-        /* Recitation Cards */
-        .recitation-card {
-            background: white;
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            overflow: hidden;
-            transition: all 0.3s ease;
-            height: 100%;
-            display: flex;
+    .filter-group label {
+        display: block;
+        color: #64748b;
+        font-size: 0.82rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 0.45rem;
+    }
+
+    .form-select {
+        border-radius: 15px;
+        border: 1px solid #dbe3ef;
+        min-height: 48px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 1rem;
+    }
+
+    .empty-icon {
+        width: 96px;
+        height: 96px;
+        border-radius: 30px;
+        display: grid;
+        place-items: center;
+        margin: 0 auto 1.25rem;
+        background: #eff6ff;
+        color: #2563eb;
+        font-size: 2.5rem;
+    }
+
+    .empty-state h3 {
+        font-weight: 900;
+        letter-spacing: -0.03em;
+    }
+
+    .empty-state p {
+        color: #64748b;
+    }
+
+    .recitation-list {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .recitation-item {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        padding: 1.15rem;
+        box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+        transition: 0.2s ease;
+    }
+
+    .recitation-item:hover {
+        border-color: #bfdbfe;
+        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.09);
+    }
+
+    .recitation-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .file-info {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.85rem;
+        min-width: 0;
+    }
+
+    .file-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        display: grid;
+        place-items: center;
+        background: #eff6ff;
+        color: #1d4ed8;
+        flex-shrink: 0;
+    }
+
+    .file-info h5 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 900;
+        color: #0f172a;
+        word-break: break-word;
+    }
+
+    .file-meta {
+        display: flex;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+        margin-top: 0.4rem;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 700;
+    }
+
+    .recitation-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .icon-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #334155;
+    }
+
+    .icon-btn:hover {
+        background: #eff6ff;
+        color: #1d4ed8;
+    }
+
+    .audio-row {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        padding: 0.85rem;
+        margin-bottom: 1rem;
+    }
+
+    .audio-row audio {
+        width: 100%;
+        height: 42px;
+    }
+
+    .storage-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        color: #64748b;
+        font-size: 0.8rem;
+        font-weight: 700;
+        margin-top: 0.4rem;
+    }
+
+    .recitation-bottom {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .badges-row {
+        display: flex;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .rule-badge,
+    .duration-badge,
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border-radius: 999px;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .rule-badge.ikhfa {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border: 1px solid #bfdbfe;
+    }
+
+    .rule-badge.izhar {
+        background: #ecfeff;
+        color: #0e7490;
+        border: 1px solid #a5f3fc;
+    }
+
+    .duration-badge {
+        background: #f8fafc;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+    }
+
+    .status-correct {
+        background: #f0fdf4;
+        color: #15803d;
+        border: 1px solid #bbf7d0;
+    }
+
+    .status-incorrect {
+        background: #fffbeb;
+        color: #b45309;
+        border: 1px solid #fde68a;
+    }
+
+    .status-processing {
+        background: #ecfeff;
+        color: #0e7490;
+        border: 1px solid #a5f3fc;
+    }
+
+    .status-failed {
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+    }
+
+    .status-pending {
+        background: #f8fafc;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+    }
+
+    .feedback-box {
+        margin-top: 0.9rem;
+        background: #f8fafc;
+        border-left: 4px solid #2563eb;
+        border-radius: 14px;
+        padding: 0.85rem 1rem;
+        color: #475569;
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    .result-action {
+        display: flex;
+        gap: 0.55rem;
+        align-items: center;
+    }
+
+    .pagination-wrapper {
+        margin-top: 1.5rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .bottom-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1.5rem;
+    }
+
+    .modal-content {
+        border: none;
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+    }
+
+    .modal-header {
+        border-bottom: 1px solid #e2e8f0;
+        padding: 1.25rem 1.5rem;
+    }
+
+    .modal-title {
+        font-weight: 900;
+    }
+
+    .warning-circle {
+        width: 74px;
+        height: 74px;
+        border-radius: 24px;
+        display: grid;
+        place-items: center;
+        background: #fff7ed;
+        color: #d97706;
+        margin: 0 auto 1rem;
+        font-size: 2rem;
+    }
+
+    @media (max-width: 992px) {
+        .history-hero {
+            align-items: flex-start;
             flex-direction: column;
         }
 
-        .recitation-card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-5px);
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
         }
 
-        .recitation-card .card-header {
-            background: var(--light);
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--border);
+        .filter-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .recitation-bottom {
+            grid-template-columns: 1fr;
         }
 
-        .card-title {
-            font-weight: 600;
-            color: var(--dark);
-            margin: 0;
-        }
-
-        .card-title i {
-            color: var(--primary);
-        }
-
-        /* Audio Player */
-        .audio-player {
-            margin: 1rem 0;
-        }
-
-        .audio-player audio {
+        .result-action {
             width: 100%;
-            height: 40px;
-            border-radius: 8px;
+            flex-direction: column;
         }
 
-        .audio-player audio::-webkit-media-controls-panel {
-            background: white;
-            border-radius: 8px;
+        .result-action .btn {
+            width: 100%;
         }
+    }
 
-        /* Badges */
-        .rule-badge {
-            padding: 0.375rem 1rem;
+    @media (max-width: 576px) {
+        .history-hero,
+        .clean-card,
+        .recitation-item {
             border-radius: 20px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            padding: 1.1rem;
         }
 
-        .rule-badge.ikhfa {
-            background: rgba(37, 99, 235, 0.1);
-            color: var(--primary);
-            border: 1px solid rgba(37, 99, 235, 0.2);
+        .stats-grid {
+            grid-template-columns: 1fr;
         }
 
-        .rule-badge.izhar {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.2);
+        .recitation-top {
+            flex-direction: column;
         }
 
-        .duration-badge {
-            color: var(--gray);
-            font-size: 0.875rem;
-            font-weight: 500;
+        .recitation-actions {
+            width: 100%;
         }
 
-        /* Analysis Status */
-        .analysis-status {
-            margin: 1rem 0;
-        }
-
-        .status-correct,
-        .status-incorrect,
-        .status-processing,
-        .status-failed,
-        .status-pending {
-            display: flex;
-            align-items: center;
-            padding: 0.75rem;
-            border-radius: var(--radius);
-            font-weight: 500;
-        }
-
-        .status-correct {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .status-incorrect {
-            background: rgba(245, 158, 11, 0.1);
-            color: var(--warning);
-            border: 1px solid rgba(245, 158, 11, 0.2);
-        }
-
-        .status-processing {
-            background: rgba(6, 182, 212, 0.1);
-            color: var(--info);
-            border: 1px solid rgba(6, 182, 212, 0.2);
-        }
-
-        .status-failed {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--danger);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-
-        .status-pending {
-            background: rgba(100, 116, 139, 0.1);
-            color: var(--gray);
-            border: 1px solid rgba(100, 116, 139, 0.2);
-        }
-
-        .confidence-score {
-            margin-left: auto;
-            font-weight: 700;
-            font-size: 1.1rem;
-        }
-
-        /* Feedback Preview */
-        .feedback-preview {
-            background: var(--light);
-            border-radius: var(--radius);
-            padding: 1rem;
-            margin-top: 1rem;
-            border-left: 4px solid var(--primary);
-        }
-
-        .feedback-text {
-            margin: 0;
-            font-size: 0.875rem;
-            line-height: 1.5;
-            color: var(--dark);
-        }
-
-        /* Card Footer */
-        .recitation-card .card-body {
+        .icon-btn {
             flex: 1;
-            padding: 1.5rem;
+            width: auto;
         }
 
-        .recitation-card .card-footer {
-            background: var(--light);
-            border-top: 1px solid var(--border);
-            padding: 1.5rem;
+        .bottom-actions .btn,
+        .hero-actions .btn {
+            width: 100%;
         }
+    }
+</style>
 
-        .recitation-card .card-footer .btn {
-            padding: 0.625rem 1.25rem;
-            font-weight: 500;
-        }
+<div class="history-page">
+    <div class="container py-4 py-lg-5">
 
-        /* Modal */
-        .modal-header {
-            border-bottom: 2px solid var(--border);
-        }
+        <div class="history-hero">
+            <div class="hero-content">
+                <span class="hero-kicker">
+                    <i class="fas fa-microphone-alt me-2"></i>My Recitations
+                </span>
+                <h1>Recitation History</h1>
+                <p>Review your recordings, listen again, and check your AI tajweed analysis results.</p>
+            </div>
 
-        .modal-title i {
-            color: var(--danger);
-        }
+            <div class="hero-actions">
+                <a href="{{ route('home') }}" class="btn btn-hero-light">
+                    <i class="fas fa-home me-2"></i>Home
+                </a>
+            </div>
+        </div>
 
-        .warning-icon {
-            margin: 1rem 0;
-        }
+        @if($recitations->isEmpty())
+            <div class="clean-card empty-state">
+                <div class="empty-icon">
+                    <i class="fas fa-inbox"></i>
+                </div>
+                <h3>No Recitations Yet</h3>
+                <p>Start by recording or uploading your first tajweed practice audio.</p>
 
-        /* Pagination */
-        .pagination-wrapper .pagination {
-            justify-content: center;
-        }
+                <div class="d-flex gap-2 justify-content-center flex-wrap mt-4">
+                    <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-main">
+                        <i class="fas fa-volume-down me-2"></i>Practice Ikhfa
+                    </a>
+                    <a href="{{ route('tajweed.izhar-halqi') }}" class="btn btn-soft">
+                        <i class="fas fa-volume-up me-2"></i>Practice Izhar
+                    </a>
+                </div>
+            </div>
+        @else
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon total"><i class="fas fa-music"></i></div>
+                    <div>
+                        <h3>{{ $recitations->total() }}</h3>
+                        <p>Total Recitations</p>
+                    </div>
+                </div>
 
-        .pagination-wrapper .page-link {
-            color: var(--primary);
-            border: 1px solid var(--border);
-            margin: 0 0.25rem;
-            border-radius: 8px;
-        }
+                <div class="stat-card">
+                    <div class="stat-icon correct"><i class="fas fa-check-circle"></i></div>
+                    <div>
+                        <h3>{{ $correctCount }}</h3>
+                        <p>Correct</p>
+                    </div>
+                </div>
 
-        .pagination-wrapper .page-item.active .page-link {
-            background: var(--primary);
-            border-color: var(--primary);
-            color: white;
-        }
+                <div class="stat-card">
+                    <div class="stat-icon improve"><i class="fas fa-exclamation-circle"></i></div>
+                    <div>
+                        <h3>{{ $incorrectCount }}</h3>
+                        <p>Needs Practice</p>
+                    </div>
+                </div>
 
-        .pagination-wrapper .page-item.disabled .page-link {
-            color: var(--gray);
-        }
+                <div class="stat-card">
+                    <div class="stat-icon pending"><i class="fas fa-clock"></i></div>
+                    <div>
+                        <h3>{{ $pendingCount }}</h3>
+                        <p>Pending / Processing</p>
+                    </div>
+                </div>
+            </div>
 
-        /* Bottom Actions */
-        .bottom-actions {
-            padding-top: 2rem;
-        }
+            <div class="clean-card filter-card">
+                <span class="section-label">
+                    <i class="fas fa-filter me-2"></i>Filter Records
+                </span>
 
-        .bottom-actions .btn {
-            padding: 0.75rem 1.5rem;
-            font-weight: 500;
-        }
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label for="ruleFilter">Rule</label>
+                        <select class="form-select" id="ruleFilter">
+                            <option value="">All Rules</option>
+                            <option value="ikhfa">Ikhfa Haqiqi</option>
+                            <option value="izhar">Izhar Halqi</option>
+                        </select>
+                    </div>
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .stats-grid {
-                grid-template-columns: 1fr 1fr;
-            }
+                    <div class="filter-group">
+                        <label for="statusFilter">Status</label>
+                        <select class="form-select" id="statusFilter">
+                            <option value="">All Status</option>
+                            <option value="correct">Correct</option>
+                            <option value="incorrect">Needs Practice</option>
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="failed">Failed</option>
+                        </select>
+                    </div>
 
-            .page-header {
-                flex-direction: column;
-                text-align: center;
-            }
+                    <div class="filter-group">
+                        <label for="sortFilter">Sort</label>
+                        <select class="form-select" id="sortFilter">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="correct">Correct First</option>
+                            <option value="incorrect">Needs Practice First</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
 
-            .action-bar .row {
-                flex-direction: column;
-            }
+            <div class="recitation-list" id="recitationsList">
+                @foreach($recitations as $recitation)
+                    @php
+                        $analysis = $recitation->analysisResult;
+                        $status = 'pending';
 
-            .action-bar .col-md-4 {
-                width: 100%;
-                margin-bottom: 1rem;
-            }
-        }
-
-        @media (max-width: 576px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .recitation-card .card-footer .d-flex {
-                flex-direction: column;
-            }
-
-            .bottom-actions .d-flex {
-                flex-direction: column;
-                width: 100%;
-            }
-
-            .bottom-actions .btn {
-                width: 100%;
-                margin-bottom: 0.5rem;
-            }
-        }
-
-        /* Delete Button Animation */
-        .btn-outline-danger:hover {
-            background: var(--danger);
-            color: white;
-            transform: scale(1.05);
-        }
-
-        /* Dropdown Menu */
-        .dropdown-menu {
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow-lg);
-        }
-
-        .dropdown-item {
-            padding: 0.625rem 1rem;
-            font-size: 0.875rem;
-        }
-
-        .dropdown-item:hover {
-            background: var(--light);
-            color: var(--primary);
-        }
-
-        .dropdown-item i {
-            width: 20px;
-            text-align: center;
-        }
-
-        /* Alert Styles */
-        .alert {
-            border-radius: var(--radius);
-            border: none;
-            padding: 0.75rem 1rem;
-            font-size: 0.875rem;
-        }
-
-        .alert-danger {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--danger);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-
-        .alert-secondary {
-            background: rgba(100, 116, 139, 0.1);
-            color: var(--gray);
-            border: 1px solid rgba(100, 116, 139, 0.2);
-        }
-    </style>
-
-    <script>
-        // Set delete URL for the modal
-        function setDeleteUrl(url) {
-            document.getElementById('deleteForm').action = url;
-        }
-
-        // Filter functionality
-        document.addEventListener('DOMContentLoaded', function () {
-            const ruleFilter = document.getElementById('ruleFilter');
-            const statusFilter = document.getElementById('statusFilter');
-            const sortFilter = document.getElementById('sortFilter');
-            const cards = document.querySelectorAll('.col-lg-6.col-xl-4');
-
-            function applyFilters() {
-                const ruleValue = ruleFilter.value;
-                const statusValue = statusFilter.value;
-                const sortValue = sortFilter.value;
-
-                cards.forEach(card => {
-                    const ruleBadge = card.querySelector('.rule-badge');
-                    const ruleClass = ruleBadge ? ruleBadge.classList.contains(ruleValue) : false;
-                    const statusElement = card.querySelector('.analysis-status');
-
-                    let showCard = true;
-
-                    // Rule filter
-                    if (ruleValue && !ruleClass) {
-                        showCard = false;
-                    }
-
-                    // Status filter
-                    if (statusValue && statusElement) {
-                        const statusText = statusElement.textContent.toLowerCase();
-                        if (statusValue === 'correct' && !statusText.includes('correct')) showCard = false;
-                        if (statusValue === 'incorrect' && !statusText.includes('needs')) showCard = false;
-                        if (statusValue === 'pending' && !statusText.includes('pending')) showCard = false;
-                        if (statusValue === 'processing' && !statusText.includes('analyzing')) showCard = false;
-                    }
-
-                    // Show/hide card
-                    card.style.display = showCard ? 'block' : 'none';
-                });
-            }
-
-            // Add event listeners
-            if (ruleFilter) ruleFilter.addEventListener('change', applyFilters);
-            if (statusFilter) statusFilter.addEventListener('change', applyFilters);
-            if (sortFilter) sortFilter.addEventListener('change', applyFilters);
-
-            // Initialize filters
-            applyFilters();
-        });
-    </script>
-
-    @push('scripts')
-        <script>
-            // Function to handle audio playback errors
-            function handleAudioError(audioElement, recitationId) {
-                console.error('Audio playback error for recitation ID:', recitationId);
-
-                // Show error message
-                const parent = audioElement.parentElement;
-                parent.innerHTML = `
-                                                        <div class="alert alert-warning">
-                                                            <i class="fas fa-exclamation-triangle me-2"></i>
-                                                            Cannot play audio. 
-                                                            <button class="btn btn-sm btn-outline-warning ms-2" onclick="retryAudio(${recitationId})">
-                                                                <i class="fas fa-redo me-1"></i>Retry
-                                                            </button>
-                                                        </div>
-                                                    `;
-            }
-
-            // Function to retry audio loading
-            function retryAudio(recitationId) {
-                fetch(`/tajweed/audio-url/${recitationId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success && data.url) {
-                            // Reload the page to try again
-                            window.location.reload();
-                        } else {
-                            alert('Unable to load audio. Please try again later.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error fetching audio URL:', error);
-                        alert('Error loading audio.');
-                    });
-            }
-
-            // Add click event to play buttons
-            document.addEventListener('DOMContentLoaded', function () {
-                // Add event listeners for all audio elements
-                document.querySelectorAll('audio').forEach(audio => {
-                    audio.addEventListener('error', function () {
-                        const recitationId = this.getAttribute('data-recitation-id');
-                        handleAudioError(this, recitationId);
-                    });
-
-                    audio.addEventListener('play', function () {
-                        // Pause all other audio players
-                        document.querySelectorAll('audio').forEach(otherAudio => {
-                            if (otherAudio !== this && !otherAudio.paused) {
-                                otherAudio.pause();
+                        if ($analysis) {
+                            if ($analysis->processing_status === 'completed') {
+                                $status = $analysis->correctness === 'correct' ? 'correct' : 'incorrect';
+                            } elseif ($analysis->processing_status === 'processing') {
+                                $status = 'processing';
+                            } elseif ($analysis->processing_status === 'failed') {
+                                $status = 'failed';
                             }
-                        });
-                    });
+                        }
+
+                        $confidence = null;
+                        if ($analysis && $analysis->confidence_score !== null) {
+                            $raw = (float) $analysis->confidence_score;
+                            $confidence = $raw <= 1 ? round($raw * 100) : round($raw);
+                        }
+
+                        $ruleLabel = $recitation->tajweed_rule === 'ikhfa'
+                            ? 'Ikhfa Haqiqi'
+                            : ($recitation->tajweed_rule === 'izhar' ? 'Izhar Halqi' : $recitation->tajweed_rule);
+
+                        $audioType = 'audio/mpeg';
+
+                        if ($recitation->firebase_url) {
+                            $ext = pathinfo(parse_url($recitation->firebase_url, PHP_URL_PATH), PATHINFO_EXTENSION);
+                            $audioType = match (strtolower($ext)) {
+                                'mp3' => 'audio/mpeg',
+                                'wav' => 'audio/wav',
+                                'webm' => 'audio/webm',
+                                default => 'audio/mpeg',
+                            };
+                        }
+                    @endphp
+
+                    <div class="recitation-item"
+                         data-rule="{{ $recitation->tajweed_rule }}"
+                         data-status="{{ $status }}"
+                         data-created="{{ $recitation->created_at->timestamp }}"
+                         data-correctness="{{ $status }}">
+
+                        <div class="recitation-top">
+                            <div class="file-info">
+                                <div class="file-icon">
+                                    <i class="fas fa-file-audio"></i>
+                                </div>
+
+                                <div>
+                                    <h5>{{ Str::limit($recitation->original_filename, 48) }}</h5>
+                                    <div class="file-meta">
+                                        <span><i class="fas fa-calendar me-1"></i>{{ $recitation->created_at->format('M d, Y') }}</span>
+                                        <span><i class="fas fa-clock me-1"></i>{{ $recitation->created_at->format('h:i A') }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="recitation-actions">
+                                <a href="{{ route('tajweed.download', $recitation->id) }}" class="icon-btn" title="Download">
+                                    <i class="fas fa-download"></i>
+                                </a>
+
+                                <button class="icon-btn text-danger"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#deleteModal"
+                                        onclick="setDeleteUrl('{{ route('tajweed.delete', $recitation->id) }}')"
+                                        title="Delete">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        @if($recitation->firebase_url)
+                            <div class="audio-row">
+                                <audio controls data-recitation-id="{{ $recitation->id }}" onerror="handleAudioError(this, {{ $recitation->id }})">
+                                    <source src="{{ $recitation->firebase_url }}" type="{{ $audioType }}">
+                                    Your browser does not support audio.
+                                </audio>
+
+                                <span class="storage-label">
+                                    <i class="fas fa-cloud"></i> Firebase Storage
+                                </span>
+                            </div>
+                        @elseif($recitation->audio_file_path)
+                            @php
+                                $localPath = $recitation->audio_file_path;
+                                if (strpos($localPath, 'public/') === 0) {
+                                    $localPath = substr($localPath, 7);
+                                }
+                            @endphp
+
+                            <div class="audio-row">
+                                <audio controls data-recitation-id="{{ $recitation->id }}" onerror="handleAudioError(this, {{ $recitation->id }})">
+                                    @if(Storage::disk('public')->exists($localPath))
+                                        <source src="{{ Storage::disk('public')->url($localPath) }}" type="audio/mpeg">
+                                    @endif
+                                    Your browser does not support audio.
+                                </audio>
+
+                                <span class="storage-label">
+                                    <i class="fas fa-hdd"></i> Local Storage
+                                </span>
+                            </div>
+                        @endif
+
+                        <div class="recitation-bottom">
+                            <div>
+                                <div class="badges-row">
+                                    <span class="rule-badge {{ $recitation->tajweed_rule }}">
+                                        {{ $ruleLabel }}
+                                    </span>
+
+                                    @if($recitation->duration_seconds)
+                                        <span class="duration-badge">
+                                            <i class="fas fa-clock"></i>{{ gmdate('i:s', $recitation->duration_seconds) }}
+                                        </span>
+                                    @endif
+
+                                    @if($status === 'correct')
+                                        <span class="status-badge status-correct">
+                                            <i class="fas fa-check-circle"></i>
+                                            Correct {{ $confidence !== null ? $confidence . '%' : '' }}
+                                        </span>
+                                    @elseif($status === 'incorrect')
+                                        <span class="status-badge status-incorrect">
+                                            <i class="fas fa-exclamation-circle"></i>
+                                            Needs Practice {{ $confidence !== null ? $confidence . '%' : '' }}
+                                        </span>
+                                    @elseif($status === 'processing')
+                                        <span class="status-badge status-processing">
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            Analyzing
+                                        </span>
+                                    @elseif($status === 'failed')
+                                        <span class="status-badge status-failed">
+                                            <i class="fas fa-times-circle"></i>
+                                            Failed
+                                        </span>
+                                    @else
+                                        <span class="status-badge status-pending">
+                                            <i class="fas fa-hourglass-start"></i>
+                                            Pending
+                                        </span>
+                                    @endif
+                                </div>
+
+                                @if($analysis && $analysis->feedback_message)
+                                    <div class="feedback-box">
+                                        <strong>Feedback:</strong>
+                                        {{ Str::limit($analysis->feedback_message, 140) }}
+                                    </div>
+                                @endif
+                            </div>
+
+                            <div class="result-action">
+                                @if($analysis && $analysis->processing_status === 'completed')
+                                    <a href="{{ route('tajweed.result', $recitation->id) }}" class="btn btn-main">
+                                        <i class="fas fa-chart-line me-2"></i>View Analysis
+                                    </a>
+                                @else
+                                    <button class="btn btn-soft" disabled>
+                                        <i class="fas fa-lock me-2"></i>In Progress
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+
+            @if($recitations->hasPages())
+                <div class="pagination-wrapper">
+                    {{ $recitations->links('pagination::bootstrap-4') }}
+                </div>
+            @endif
+
+            <div class="bottom-actions">
+                <a href="{{ route('home') }}" class="btn btn-soft">
+                    <i class="fas fa-home me-2"></i>Dashboard
+                </a>
+
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-main">
+                        <i class="fas fa-volume-down me-2"></i>Practice Ikhfa
+                    </a>
+                    <a href="{{ route('tajweed.izhar-halqi') }}" class="btn btn-soft">
+                        <i class="fas fa-volume-up me-2"></i>Practice Izhar
+                    </a>
+                </div>
+            </div>
+        @endif
+    </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-trash-alt text-danger me-2"></i>Delete Recording
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body text-center p-4">
+                <div class="warning-circle">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+
+                <h5 class="fw-bold">Are you sure?</h5>
+                <p class="text-muted mb-0">
+                    This recording and its analysis result will be permanently deleted.
+                    This action cannot be undone.
+                </p>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-soft" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+
+                <form id="deleteForm" method="POST">
+                    @csrf
+                    @method('DELETE')
+
+                    <button type="submit" class="btn btn-danger-soft">
+                        <i class="fas fa-trash-alt me-2"></i>Delete Recording
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function setDeleteUrl(url) {
+        document.getElementById('deleteForm').action = url;
+    }
+
+    function handleAudioError(audioElement, recitationId) {
+        const parent = audioElement.closest('.audio-row');
+
+        if (!parent) return;
+
+        parent.innerHTML = `
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                Cannot play audio.
+                <button class="btn btn-sm btn-outline-warning ms-2" onclick="retryAudio(${recitationId})">
+                    <i class="fas fa-redo me-1"></i>Retry
+                </button>
+            </div>
+        `;
+    }
+
+    function retryAudio(recitationId) {
+        fetch(`/tajweed/audio-url/${recitationId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.url) {
+                    window.location.reload();
+                } else {
+                    alert('Unable to load audio. Please try again later.');
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching audio URL:', error);
+                alert('Error loading audio.');
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const ruleFilter = document.getElementById('ruleFilter');
+        const statusFilter = document.getElementById('statusFilter');
+        const sortFilter = document.getElementById('sortFilter');
+        const list = document.getElementById('recitationsList');
+
+        function applyFilters() {
+            if (!list) return;
+
+            const items = Array.from(list.querySelectorAll('.recitation-item'));
+            const ruleValue = ruleFilter ? ruleFilter.value : '';
+            const statusValue = statusFilter ? statusFilter.value : '';
+            const sortValue = sortFilter ? sortFilter.value : 'newest';
+
+            items.forEach(item => {
+                const matchRule = !ruleValue || item.dataset.rule === ruleValue;
+                const matchStatus = !statusValue || item.dataset.status === statusValue;
+
+                item.style.display = matchRule && matchStatus ? '' : 'none';
+            });
+
+            items.sort((a, b) => {
+                if (sortValue === 'oldest') {
+                    return Number(a.dataset.created) - Number(b.dataset.created);
+                }
+
+                if (sortValue === 'correct') {
+                    return (b.dataset.status === 'correct') - (a.dataset.status === 'correct');
+                }
+
+                if (sortValue === 'incorrect') {
+                    return (b.dataset.status === 'incorrect') - (a.dataset.status === 'incorrect');
+                }
+
+                return Number(b.dataset.created) - Number(a.dataset.created);
+            });
+
+            items.forEach(item => list.appendChild(item));
+        }
+
+        if (ruleFilter) ruleFilter.addEventListener('change', applyFilters);
+        if (statusFilter) statusFilter.addEventListener('change', applyFilters);
+        if (sortFilter) sortFilter.addEventListener('change', applyFilters);
+
+        document.querySelectorAll('audio').forEach(audio => {
+            audio.addEventListener('play', function () {
+                document.querySelectorAll('audio').forEach(otherAudio => {
+                    if (otherAudio !== this && !otherAudio.paused) {
+                        otherAudio.pause();
+                    }
                 });
             });
-        </script>
-    @endpush
+        });
 
+        applyFilters();
+    });
+</script>
 @endsection

@@ -3,715 +3,686 @@
 @section('title', 'Home')
 
 @section('content')
-<div class="container py-4">
-    <!-- Hero Section -->
-    <div class="hero-section mb-5">
-        <div class="row align-items-center g-4">
-            <div class="col-lg-6">
-                <h1 class="hero-title mb-4">
-                    Master Tajweed with<br>
-                    <span class="gradient-text">AI-Powered Feedback</span>
-                </h1>
-                <p class="hero-description mb-4">
-                    Record or upload your Quranic recitation and get instant, detailed feedback 
-                    on your Tajweed pronunciation. Perfect your recitation with intelligent analysis.
-                </p>
-                <div class="hero-actions">
+@php
+    $user = auth()->user();
+    $totalRecitations = 0;
+    $correctRecitations = 0;
+    $needsPractice = 0;
+    $pendingAnalysis = 0;
+    $latestRecitations = collect();
+
+    if ($user) {
+        $recitationsQuery = $user->audioRecitations();
+
+        $totalRecitations = (clone $recitationsQuery)->count();
+        $correctRecitations = (clone $recitationsQuery)
+            ->whereHas('analysisResult', fn ($query) => $query->where('correctness', 'correct'))
+            ->count();
+        $needsPractice = (clone $recitationsQuery)
+            ->whereHas('analysisResult', fn ($query) => $query->where('correctness', 'incorrect'))
+            ->count();
+        $pendingAnalysis = (clone $recitationsQuery)
+            ->where(function ($query) {
+                $query->whereDoesntHave('analysisResult')
+                    ->orWhereHas('analysisResult', fn ($analysisQuery) => $analysisQuery->whereIn('processing_status', ['pending', 'processing']));
+            })
+            ->count();
+        $latestRecitations = (clone $recitationsQuery)
+            ->with('analysisResult')
+            ->latest()
+            ->take(3)
+            ->get();
+    }
+@endphp
+
+<div class="home-dashboard">
+    <section class="welcome-panel">
+        <div class="welcome-copy">
+            <span class="eyebrow">Assalamu alaikum{{ $user ? ', ' . $user->name : '' }}</span>
+            <h1>{{ $user ? 'Choose a rule, recite, and review your Tajweed feedback.' : 'Practice Tajweed with focused recitation feedback.' }}</h1>
+            <p>
+                {{ $user
+                    ? 'Practice focused recitation for Ikhfa Haqiqi and Izhar Halqi, then use your saved results to understand what is already clear and what still needs repetition.'
+                    : 'Create an account to record or upload recitations, test Ikhfa Haqiqi and Izhar Halqi, and keep your practice history in one place.' }}
+            </p>
+
+            <div class="primary-actions">
+                @auth
                     <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="btn btn-primary btn-lg">
-                        <i class="fas fa-volume-down me-2"></i>Ikhfa Haqiqi
+                        <i class="fas fa-volume-down me-2"></i>Practice Ikhfa
                     </a>
                     <a href="{{ route('tajweed.izhar-halqi') }}" class="btn btn-success btn-lg">
-                        <i class="fas fa-volume-up me-2"></i>Izhar Halqi
+                        <i class="fas fa-volume-up me-2"></i>Practice Izhar
                     </a>
-                </div>
-            </div>
-            <div class="col-lg-6">
-                <div class="hero-visual">
-                    <div class="quran-icon">
-                        <i class="fas fa-quran"></i>
-                    </div>
-                    <div class="visual-content text-center">
-                        <h5 class="mb-2">Quranic Excellence</h5>
-                        <p class="text-muted">Learn the correct way to recite the Quran</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Features Section -->
-    <div class="features-section mb-5">
-        <div class="section-header mb-4">
-            <h2 class="section-title">Key Features</h2>
-            <p class="section-subtitle">Everything you need to perfect your Tajweed</p>
-        </div>
-        
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-microphone"></i>
-                </div>
-                <div class="feature-content">
-                    <h5 class="feature-title">Easy Recording</h5>
-                    <p class="feature-description">Record directly from your browser or upload audio files with one click</p>
-                </div>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-brain"></i>
-                </div>
-                <div class="feature-content">
-                    <h5 class="feature-title">AI Analysis</h5>
-                    <p class="feature-description">Advanced machine learning analyzes your pronunciation accuracy</p>
-                </div>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-comments"></i>
-                </div>
-                <div class="feature-content">
-                    <h5 class="feature-title">Instant Feedback</h5>
-                    <p class="feature-description">Get detailed feedback and personalized improvement suggestions</p>
-                </div>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-history"></i>
-                </div>
-                <div class="feature-content">
-                    <h5 class="feature-title">Track Progress</h5>
-                    <p class="feature-description">View your recitation history and monitor improvement over time</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Quick Stats -->
-    <div class="stats-section mb-5">
-        <div class="section-header mb-4">
-            <h2 class="section-title">Your Learning Journey</h2>
-            <p class="section-subtitle">Track your progress and achievements</p>
-        </div>
-        
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-music"></i>
-                </div>
-                <div class="stat-content">
-                    <h3 class="stat-number">{{ auth()->user()->audioRecitations()->count() ?? 0 }}</h3>
-                    <p class="stat-label">Total Recitations</p>
-                </div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-check-circle"></i>
-                </div>
-                <div class="stat-content">
-                    <h3 class="stat-number">
-                        {{ auth()->user()->audioRecitations()
-                            ->whereHas('analysisResult', fn($q) => $q->where('correctness', 'correct'))
-                            ->count() ?? 0 }}
-                    </h3>
-                    <p class="stat-label">Correct Pronunciations</p>
-                </div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-icon">
-                    <i class="fas fa-exclamation-circle"></i>
-                </div>
-                <div class="stat-content">
-                    <h3 class="stat-number">
-                        {{ auth()->user()->audioRecitations()
-                            ->whereHas('analysisResult', fn($q) => $q->where('correctness', 'incorrect'))
-                            ->count() ?? 0 }}
-                    </h3>
-                    <p class="stat-label">Needs Improvement</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- CTA Section -->
-    <div class="cta-section mb-5">
-        <div class="cta-card">
-            <div class="cta-content">
-                <h3 class="cta-title">Your History Recitation is here</h3>
-                <p class="cta-description">
-                    Start recording today and get instant feedback on your recitation.
-                    Perfect your pronunciation with every session.
-                </p>
-                <div class="cta-actions">
-                    <a href="{{ route('tajweed.history') }}" class="btn btn-light">
-                        <i class="fas fa-history me-2"></i>View My Recitations
+                @else
+                    <a href="{{ route('register') }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-user-plus me-2"></i>Create Account
                     </a>
+                    <a href="{{ route('login') }}" class="btn btn-success btn-lg">
+                        <i class="fas fa-sign-in-alt me-2"></i>Login
+                    </a>
+                @endauth
+                <a href="{{ route('recite.quran') }}" class="btn btn-outline-dark btn-lg">
+                    <i class="fas fa-book-quran me-2"></i>Read Quran
+                </a>
+            </div>
+        </div>
+
+        <div class="practice-card">
+            <div class="practice-card-header">
+                <div>
+                    <span>Today&apos;s Focus</span>
+                    <h2>Short, careful practice</h2>
+                </div>
+                <i class="fas fa-microphone-lines"></i>
+            </div>
+
+            <div class="practice-steps">
+                <div>
+                    <strong>1</strong>
+                    <span>Select a Tajweed rule.</span>
+                </div>
+                <div>
+                    <strong>2</strong>
+                    <span>Record or upload your recitation.</span>
+                </div>
+                <div>
+                    <strong>3</strong>
+                    <span>Review the feedback and repeat.</span>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <!-- Tajweed Rules Section -->
-    <div class="rules-section">
-        <div class="section-header mb-4">
-            <h2 class="section-title">Learn Tajweed Rules</h2>
-            <p class="section-subtitle">Master the rules of beautiful Quranic recitation</p>
+    <section class="metric-grid" aria-label="Learning progress">
+        <div class="metric-card">
+            <span class="metric-icon blue"><i class="fas fa-music"></i></span>
+            <div>
+                <strong>{{ $totalRecitations }}</strong>
+                <span>Total recitations</span>
+            </div>
         </div>
-        
-        <div class="rules-grid">
-            <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="rule-card ikhfa-card">
-                <div class="rule-icon">
-                    <i class="fas fa-volume-down"></i>
-                </div>
-                <div class="rule-content">
-                    <h5 class="rule-title">Ikhfa Haqiqi</h5>
-                    <p class="rule-description">
-                        True concealment of noon sakinah and tanween when followed by one of the 15 Ikhfa letters.
-                    </p>
-                    <span class="rule-link">Learn More <i class="fas fa-arrow-right ms-1"></i></span>
-                </div>
-            </a>
-            
-            <a href="{{ route('tajweed.izhar-halqi') }}" class="rule-card izhar-card">
-                <div class="rule-icon">
-                    <i class="fas fa-volume-up"></i>
-                </div>
-                <div class="rule-content">
-                    <h5 class="rule-title">Izhar Halqi</h5>
-                    <p class="rule-description">
-                        Clear pronunciation of noon sakinah and tanween when followed by one of the 6 throat letters.
-                    </p>
-                    <span class="rule-link">Learn More <i class="fas fa-arrow-right ms-1"></i></span>
-                </div>
-            </a>
+        <div class="metric-card">
+            <span class="metric-icon green"><i class="fas fa-check"></i></span>
+            <div>
+                <strong>{{ $correctRecitations }}</strong>
+                <span>Marked correct</span>
+            </div>
         </div>
-    </div>
+        <div class="metric-card">
+            <span class="metric-icon amber"><i class="fas fa-repeat"></i></span>
+            <div>
+                <strong>{{ $needsPractice }}</strong>
+                <span>Need practice</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <span class="metric-icon slate"><i class="fas fa-chart-simple"></i></span>
+            <div>
+                <strong>{{ $pendingAnalysis }}</strong>
+                <span>Pending analysis</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="content-grid">
+        <div class="panel rule-panel">
+            <div class="panel-heading">
+                <div>
+                    <span class="eyebrow">Practice Paths</span>
+                    <h2>Start with the rule you want to improve</h2>
+                </div>
+            </div>
+
+            <div class="rule-list">
+                <a href="{{ route('tajweed.ikhfa-haqiqi') }}" class="rule-row">
+                    <span class="rule-mark ikhfa"><i class="fas fa-volume-down"></i></span>
+                    <div>
+                        <h3>Ikhfa Haqiqi</h3>
+                        <p>Practice concealing noon sakinah or tanween before the Ikhfa letters.</p>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+
+                <a href="{{ route('tajweed.izhar-halqi') }}" class="rule-row">
+                    <span class="rule-mark izhar"><i class="fas fa-volume-up"></i></span>
+                    <div>
+                        <h3>Izhar Halqi</h3>
+                        <p>Practice clear pronunciation before the six throat letters.</p>
+                    </div>
+                    <i class="fas fa-arrow-right"></i>
+                </a>
+            </div>
+        </div>
+
+        <div class="panel recent-panel">
+            <div class="panel-heading compact">
+                <div>
+                    <span class="eyebrow">{{ $user ? 'Recent Work' : 'Practice Flow' }}</span>
+                    <h2>{{ $user ? 'Your latest recitations' : 'What happens after login' }}</h2>
+                </div>
+                @auth
+                    <a href="{{ route('tajweed.history') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-history me-1"></i>History
+                    </a>
+                @endauth
+            </div>
+
+            @guest
+                <div class="empty-state">
+                    <i class="fas fa-microphone-alt"></i>
+                    <h3>Record, analyze, review</h3>
+                    <p>After signing in, your latest recitations and feedback will appear here.</p>
+                </div>
+            @elseif($latestRecitations->isEmpty())
+                <div class="empty-state">
+                    <i class="fas fa-file-audio"></i>
+                    <h3>No recordings yet</h3>
+                    <p>Start with one short recitation so your progress has something to build on.</p>
+                </div>
+            @else
+                <div class="recent-list">
+                    @foreach($latestRecitations as $recitation)
+                        @php
+                            $result = $recitation->analysisResult;
+                            $statusClass = 'pending';
+                            $statusLabel = 'Pending';
+
+                            if ($result && $result->processing_status === 'completed') {
+                                $statusClass = $result->correctness === 'correct' ? 'correct' : 'improve';
+                                $statusLabel = $result->correctness === 'correct' ? 'Correct' : 'Needs practice';
+                            } elseif ($result && $result->processing_status === 'processing') {
+                                $statusClass = 'processing';
+                                $statusLabel = 'Processing';
+                            }
+                        @endphp
+
+                        <a href="{{ $result && $result->processing_status === 'completed' ? route('tajweed.result', $recitation->id) : route('tajweed.history') }}" class="recent-row">
+                            <div>
+                                <strong>{{ $recitation->tajweed_rule === 'ikhfa' ? 'Ikhfa Haqiqi' : 'Izhar Halqi' }}</strong>
+                                <span>{{ $recitation->created_at->format('M d, Y') }}</span>
+                            </div>
+                            <span class="status-pill {{ $statusClass }}">{{ $statusLabel }}</span>
+                        </a>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+    </section>
+
+    <section class="next-panel">
+        <div>
+            <span class="eyebrow">Next Step</span>
+            <h2>Keep the loop simple: practice, listen, correct.</h2>
+            <p>
+                Use the Quran reader when you want context, then return to the Tajweed tests for focused feedback
+                on the rules this system currently supports.
+            </p>
+        </div>
+        <div class="secondary-actions">
+            <a href="{{ route('recite.quran') }}" class="btn btn-dark">
+                <i class="fas fa-book-open me-2"></i>Open Quran Reader
+            </a>
+            @auth
+                <a href="{{ route('tajweed.history') }}" class="btn btn-outline-dark">
+                    <i class="fas fa-list-check me-2"></i>Review Results
+                </a>
+            @else
+                <a href="{{ route('register') }}" class="btn btn-outline-dark">
+                    <i class="fas fa-user-plus me-2"></i>Start Practicing
+                </a>
+            @endauth
+        </div>
+    </section>
 </div>
 
 <style>
-:root {
-    --primary: #2563eb;
-    --primary-light: #3b82f6;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --info: #06b6d4;
-    --light: #f8fafc;
-    --dark: #1e293b;
-    --gray: #64748b;
-    --border: #e2e8f0;
-    --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
-    --radius: 12px;
-}
-
-body {
-    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
-}
-
-/* Hero Section */
-.hero-section {
-    padding: 3rem 0;
-}
-
-.hero-title {
-    font-size: 3rem;
-    font-weight: 700;
-    color: var(--dark);
-    line-height: 1.2;
-    margin-bottom: 1.5rem;
-}
-
-.gradient-text {
-    background: linear-gradient(135deg, var(--primary), var(--success));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.hero-description {
-    font-size: 1.25rem;
-    color: var(--gray);
-    line-height: 1.6;
-    margin-bottom: 2rem;
-}
-
-.hero-actions {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-
-.hero-actions .btn {
-    padding: 1rem 2rem;
-    font-weight: 600;
-    border-radius: var(--radius);
-    transition: all 0.3s ease;
-}
-
-.hero-actions .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-}
-
-.hero-visual {
-    background: white;
-    border-radius: var(--radius);
-    padding: 3rem 2rem;
-    box-shadow: var(--shadow);
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-}
-
-.hero-visual::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--primary), var(--success));
-}
-
-.quran-icon {
-    font-size: 4rem;
-    color: var(--primary);
-    margin-bottom: 1.5rem;
-}
-
-.visual-content h5 {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--dark);
-    margin-bottom: 0.5rem;
-}
-
-/* Section Header */
-.section-header {
-    text-align: center;
-    margin-bottom: 3rem;
-}
-
-.section-title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--dark);
-    margin-bottom: 0.5rem;
-}
-
-.section-subtitle {
-    font-size: 1.125rem;
-    color: var(--gray);
-    max-width: 600px;
-    margin: 0 auto;
-}
-
-/* Features Section */
-.features-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-}
-
-.feature-card {
-    background: white;
-    border-radius: var(--radius);
-    padding: 2rem;
-    box-shadow: var(--shadow);
-    transition: all 0.3s ease;
-    border: 1px solid transparent;
-    text-align: center;
-}
-
-.feature-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
-    border-color: var(--primary);
-}
-
-.feature-icon {
-    width: 70px;
-    height: 70px;
-    background: linear-gradient(135deg, var(--primary), var(--primary-light));
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.75rem;
-    margin: 0 auto 1.5rem;
-}
-
-.feature-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--dark);
-    margin-bottom: 1rem;
-}
-
-.feature-description {
-    color: var(--gray);
-    font-size: 0.9375rem;
-    line-height: 1.6;
-    margin: 0;
-}
-
-/* Stats Section */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-}
-
-.stat-card {
-    background: white;
-    border-radius: var(--radius);
-    padding: 2rem;
-    box-shadow: var(--shadow);
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    transition: all 0.3s ease;
-}
-
-.stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
-}
-
-.stat-icon {
-    width: 60px;
-    height: 60px;
-    background: var(--light);
-    border-radius: 15px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    color: var(--primary);
-    flex-shrink: 0;
-}
-
-.stat-number {
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--dark);
-    margin: 0;
-    line-height: 1;
-}
-
-.stat-label {
-    color: var(--gray);
-    font-size: 0.9375rem;
-    margin: 0.5rem 0 0;
-}
-
-/* CTA Section */
-.cta-card {
-    background: linear-gradient(135deg, var(--dark), #2d3748);
-    border-radius: var(--radius);
-    padding: 4rem 2rem;
-    text-align: center;
-    box-shadow: var(--shadow-lg);
-    position: relative;
-    overflow: hidden;
-}
-
-.cta-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--primary), var(--success));
-}
-
-.cta-title {
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: white;
-    margin-bottom: 1rem;
-}
-
-.cta-description {
-    font-size: 1.125rem;
-    color: rgba(255, 255, 255, 0.9);
-    max-width: 600px;
-    margin: 0 auto 2rem;
-    line-height: 1.6;
-}
-
-.cta-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
-}
-
-.cta-actions .btn {
-    padding: 0.875rem 2rem;
-    font-weight: 600;
-    border-radius: var(--radius);
-    transition: all 0.3s ease;
-}
-
-.cta-actions .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-.cta-actions .btn-light {
-    background: white;
-    color: var(--dark);
-    border: none;
-}
-
-.cta-actions .btn-outline-light {
-    background: transparent;
-    color: white;
-    border: 2px solid white;
-}
-
-.cta-actions .btn-outline-light:hover {
-    background: white;
-    color: var(--dark);
-}
-
-/* Rules Section */
-.rules-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 2rem;
-}
-
-.rule-card {
-    background: white;
-    border-radius: var(--radius);
-    padding: 2rem;
-    box-shadow: var(--shadow);
-    transition: all 0.3s ease;
-    text-decoration: none;
-    display: block;
-    border: 2px solid transparent;
-}
-
-.rule-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--shadow-lg);
-    text-decoration: none;
-}
-
-.ikhfa-card:hover {
-    border-color: var(--primary);
-}
-
-.izhar-card:hover {
-    border-color: var(--success);
-}
-
-.rule-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 15px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-
-.ikhfa-card .rule-icon {
-    background: rgba(37, 99, 235, 0.1);
-    color: var(--primary);
-}
-
-.izhar-card .rule-icon {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--success);
-}
-
-.rule-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    color: var(--dark);
-    margin-bottom: 1rem;
-}
-
-.rule-description {
-    color: var(--gray);
-    line-height: 1.6;
-    margin-bottom: 1.5rem;
-}
-
-.rule-link {
-    color: var(--primary);
-    font-weight: 600;
-    font-size: 0.9375rem;
-    display: inline-flex;
-    align-items: center;
-    transition: all 0.3s ease;
-}
-
-.ikhfa-card .rule-link {
-    color: var(--primary);
-}
-
-.izhar-card .rule-link {
-    color: var(--success);
-}
-
-.rule-card:hover .rule-link {
-    transform: translateX(5px);
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .hero-title {
-        font-size: 2.5rem;
-        text-align: center;
+    :root {
+        --home-ink: #172033;
+        --home-muted: #64748b;
+        --home-border: #dce3ec;
+        --home-surface: #ffffff;
+        --home-soft: #f7fafc;
+        --home-blue: #2563eb;
+        --home-green: #168a63;
+        --home-amber: #b7791f;
+        --home-teal: #0f766e;
+        --home-shadow: 0 18px 45px rgba(23, 32, 51, 0.08);
     }
-    
-    .hero-description {
-        text-align: center;
+
+    .home-dashboard {
+        display: grid;
+        gap: 1.5rem;
     }
-    
-    .hero-actions {
+
+    .welcome-panel,
+    .panel,
+    .next-panel,
+    .metric-card {
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid rgba(220, 227, 236, 0.9);
+        border-radius: 8px;
+        box-shadow: var(--home-shadow);
+    }
+
+    .welcome-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+        gap: 1.5rem;
+        min-height: 420px;
+        overflow: hidden;
+        padding: 2.25rem;
+        position: relative;
+    }
+
+    .welcome-panel::before {
+        background:
+            linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(22, 138, 99, 0.08)),
+            repeating-linear-gradient(45deg, rgba(183, 121, 31, 0.08) 0 1px, transparent 1px 18px);
+        content: "";
+        inset: 0;
+        position: absolute;
+        pointer-events: none;
+    }
+
+    .welcome-copy,
+    .practice-card {
+        position: relative;
+        z-index: 1;
+    }
+
+    .eyebrow {
+        color: var(--home-teal);
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.55rem;
+        text-transform: uppercase;
+    }
+
+    .welcome-copy {
+        align-self: center;
+        max-width: 760px;
+    }
+
+    .welcome-copy h1 {
+        color: var(--home-ink);
+        font-size: clamp(2.1rem, 4vw, 4.3rem);
+        font-weight: 800;
+        letter-spacing: 0;
+        line-height: 1.05;
+        margin-bottom: 1.1rem;
+    }
+
+    .welcome-copy p {
+        color: var(--home-muted);
+        font-size: 1.08rem;
+        line-height: 1.8;
+        margin-bottom: 1.5rem;
+        max-width: 680px;
+    }
+
+    .primary-actions,
+    .secondary-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .primary-actions .btn,
+    .secondary-actions .btn {
+        border-radius: 8px;
+        font-weight: 700;
+        min-height: 44px;
+    }
+
+    .practice-card {
+        align-self: stretch;
+        background: #172033;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 1.5rem;
+    }
+
+    .practice-card-header {
+        align-items: flex-start;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .practice-card-header span {
+        color: #9fd6c9;
+        font-size: 0.8rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .practice-card-header h2 {
+        font-size: 1.55rem;
+        font-weight: 800;
+        margin: 0.35rem 0 0;
+    }
+
+    .practice-card-header i {
+        color: #f5cf72;
+        font-size: 2rem;
+    }
+
+    .practice-steps {
+        display: grid;
+        gap: 0.85rem;
+        margin-top: 2rem;
+    }
+
+    .practice-steps div {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        display: flex;
+        gap: 0.8rem;
+        padding: 0.9rem;
+    }
+
+    .practice-steps strong {
+        align-items: center;
+        background: #f5cf72;
+        border-radius: 50%;
+        color: #172033;
+        display: inline-flex;
+        flex: 0 0 30px;
+        height: 30px;
         justify-content: center;
     }
-    
-    .features-grid,
-    .stats-grid,
-    .rules-grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .section-title {
-        font-size: 2rem;
-    }
-    
-    .cta-title {
-        font-size: 2rem;
-    }
-    
-    .cta-actions {
-        flex-direction: column;
-    }
-    
-    .cta-actions .btn {
-        width: 100%;
-    }
-}
 
-@media (max-width: 576px) {
-    .hero-title {
+    .metric-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .metric-card {
+        align-items: center;
+        display: flex;
+        gap: 1rem;
+        min-height: 110px;
+        padding: 1.15rem;
+    }
+
+    .metric-icon {
+        align-items: center;
+        border-radius: 8px;
+        display: inline-flex;
+        flex: 0 0 48px;
+        height: 48px;
+        justify-content: center;
+    }
+
+    .metric-icon.blue {
+        background: rgba(37, 99, 235, 0.12);
+        color: var(--home-blue);
+    }
+
+    .metric-icon.green {
+        background: rgba(22, 138, 99, 0.12);
+        color: var(--home-green);
+    }
+
+    .metric-icon.amber {
+        background: rgba(183, 121, 31, 0.14);
+        color: var(--home-amber);
+    }
+
+    .metric-icon.slate {
+        background: rgba(23, 32, 51, 0.1);
+        color: var(--home-ink);
+    }
+
+    .metric-card strong {
+        color: var(--home-ink);
+        display: block;
         font-size: 2rem;
+        line-height: 1;
     }
-    
-    .section-title {
-        font-size: 1.75rem;
+
+    .metric-card span:last-child {
+        color: var(--home-muted);
+        display: block;
+        font-size: 0.9rem;
+        margin-top: 0.3rem;
     }
-    
-    .stat-card {
-        flex-direction: column;
+
+    .content-grid {
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+    }
+
+    .panel {
+        padding: 1.35rem;
+    }
+
+    .panel-heading {
+        align-items: flex-start;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .panel-heading.compact {
+        align-items: center;
+    }
+
+    .panel-heading h2,
+    .next-panel h2 {
+        color: var(--home-ink);
+        font-size: 1.45rem;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .rule-list,
+    .recent-list {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .rule-row,
+    .recent-row {
+        align-items: center;
+        background: var(--home-soft);
+        border: 1px solid var(--home-border);
+        border-radius: 8px;
+        color: inherit;
+        display: flex;
+        gap: 1rem;
+        padding: 1rem;
+        text-decoration: none;
+        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .rule-row:hover,
+    .recent-row:hover {
+        border-color: rgba(37, 99, 235, 0.35);
+        box-shadow: 0 12px 26px rgba(23, 32, 51, 0.08);
+        color: inherit;
+        text-decoration: none;
+        transform: translateY(-2px);
+    }
+
+    .rule-mark {
+        align-items: center;
+        border-radius: 8px;
+        display: inline-flex;
+        flex: 0 0 52px;
+        height: 52px;
+        justify-content: center;
+    }
+
+    .rule-mark.ikhfa {
+        background: rgba(37, 99, 235, 0.12);
+        color: var(--home-blue);
+    }
+
+    .rule-mark.izhar {
+        background: rgba(22, 138, 99, 0.12);
+        color: var(--home-green);
+    }
+
+    .rule-row h3 {
+        color: var(--home-ink);
+        font-size: 1.05rem;
+        font-weight: 800;
+        margin: 0 0 0.25rem;
+    }
+
+    .rule-row p {
+        color: var(--home-muted);
+        line-height: 1.55;
+        margin: 0;
+    }
+
+    .rule-row > i {
+        color: var(--home-muted);
+        margin-left: auto;
+    }
+
+    .empty-state {
+        background: var(--home-soft);
+        border: 1px dashed var(--home-border);
+        border-radius: 8px;
+        padding: 2rem 1rem;
         text-align: center;
     }
-    
-    .hero-actions .btn {
-        width: 100%;
+
+    .empty-state i {
+        color: var(--home-blue);
+        font-size: 2rem;
+        margin-bottom: 0.75rem;
     }
-}
 
-/* Animations */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
+    .empty-state h3 {
+        color: var(--home-ink);
+        font-size: 1.1rem;
+        font-weight: 800;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+
+    .empty-state p {
+        color: var(--home-muted);
+        margin: 0 auto;
+        max-width: 320px;
     }
-}
 
-.hero-section,
-.features-section,
-.stats-section,
-.cta-section,
-.rules-section {
-    animation: fadeIn 0.6s ease-out;
-}
+    .recent-row {
+        justify-content: space-between;
+    }
 
-.hero-section {
-    animation-delay: 0.1s;
-}
+    .recent-row strong,
+    .recent-row span {
+        display: block;
+    }
 
-.features-section {
-    animation-delay: 0.2s;
-}
+    .recent-row strong {
+        color: var(--home-ink);
+        font-size: 0.98rem;
+    }
 
-.stats-section {
-    animation-delay: 0.3s;
-}
+    .recent-row div span {
+        color: var(--home-muted);
+        font-size: 0.86rem;
+        margin-top: 0.25rem;
+    }
 
-.cta-section {
-    animation-delay: 0.4s;
-}
+    .status-pill {
+        border-radius: 999px;
+        font-size: 0.78rem;
+        font-weight: 800;
+        padding: 0.4rem 0.65rem;
+        white-space: nowrap;
+    }
 
-.rules-section {
-    animation-delay: 0.5s;
-}
+    .status-pill.correct {
+        background: rgba(22, 138, 99, 0.12);
+        color: var(--home-green);
+    }
 
-/* Loading State */
-.stat-number,
-.feature-card,
-.rule-card {
-    transition: opacity 0.3s ease;
-}
+    .status-pill.improve {
+        background: rgba(183, 121, 31, 0.14);
+        color: var(--home-amber);
+    }
+
+    .status-pill.processing,
+    .status-pill.pending {
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--home-blue);
+    }
+
+    .next-panel {
+        align-items: center;
+        display: flex;
+        gap: 1.5rem;
+        justify-content: space-between;
+        padding: 1.5rem;
+    }
+
+    .next-panel p {
+        color: var(--home-muted);
+        line-height: 1.7;
+        margin: 0.75rem 0 0;
+        max-width: 720px;
+    }
+
+    @media (max-width: 992px) {
+        .welcome-panel,
+        .content-grid,
+        .next-panel {
+            grid-template-columns: 1fr;
+        }
+
+        .metric-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .next-panel {
+            align-items: flex-start;
+            display: grid;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .welcome-panel,
+        .panel,
+        .next-panel {
+            padding: 1rem;
+        }
+
+        .welcome-copy h1 {
+            font-size: 2.05rem;
+        }
+
+        .primary-actions .btn,
+        .secondary-actions .btn {
+            width: 100%;
+        }
+
+        .metric-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .rule-row,
+        .recent-row {
+            align-items: flex-start;
+        }
+
+        .recent-row {
+            flex-direction: column;
+        }
+    }
 </style>
-
-<script>
-// Add subtle animations on scroll
-document.addEventListener('DOMContentLoaded', function() {
-    const observerOptions = {
-        root: null,
-        rootMargin: '0px',
-        threshold: 0.1
-    };
-
-    const observer = new IntersectionObserver(function(entries) {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('animate-in');
-            }
-        });
-    }, observerOptions);
-
-    // Observe all cards
-    document.querySelectorAll('.feature-card, .stat-card, .rule-card').forEach(card => {
-        observer.observe(card);
-    });
-
-    // Update stats with animation
-    const statNumbers = document.querySelectorAll('.stat-number');
-    statNumbers.forEach(stat => {
-        const finalValue = parseInt(stat.textContent);
-        let currentValue = 0;
-        const increment = finalValue / 50;
-        const timer = setInterval(() => {
-            currentValue += increment;
-            if (currentValue >= finalValue) {
-                currentValue = finalValue;
-                clearInterval(timer);
-            }
-            stat.textContent = Math.floor(currentValue);
-        }, 30);
-    });
-});
-</script>
 @endsection

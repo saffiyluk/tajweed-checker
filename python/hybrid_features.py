@@ -5,7 +5,8 @@ import tempfile
 import numpy as np
 import soundfile as sf
 
-SAMPLE_RATE = 16000
+from audio_cleaning import SAMPLE_RATE, clean_recitation_audio
+
 TARGET_SECONDS = 2
 TARGET_LENGTH = SAMPLE_RATE * TARGET_SECONDS
 
@@ -55,10 +56,6 @@ def load_audio(file_path, sample_rate=SAMPLE_RATE):
     if sr != sample_rate:
         y = resample_audio(y, sr, sample_rate)
 
-    max_abs = np.max(np.abs(y)) if y.size else 0
-    if max_abs > 0:
-        y = y / max_abs
-
     return y
 
 
@@ -74,21 +71,8 @@ def resample_audio(y, original_rate, target_rate):
     return np.interp(target_positions, source_positions, y).astype(np.float32)
 
 
-def trim_silence(y, threshold=0.03):
-    if y.size == 0:
-        return y
-
-    mask = np.abs(y) > threshold
-
-    if not np.any(mask):
-        return y
-
-    indices = np.where(mask)[0]
-    return y[indices[0]:indices[-1] + 1]
-
-
 def fixed_length_audio(file_path):
-    y = trim_silence(load_audio(file_path))
+    y = clean_recitation_audio(load_audio(file_path), sample_rate=SAMPLE_RATE)
     return np.pad(y, (0, max(0, TARGET_LENGTH - len(y))))[:TARGET_LENGTH]
 
 

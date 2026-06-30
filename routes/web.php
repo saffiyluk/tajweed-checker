@@ -21,7 +21,7 @@ use App\Http\Controllers\QuranController;
 */
 
 Route::get('/', function () {
-    return view('auth/login');
+    return view('home');
 });
 
 Auth::routes();
@@ -54,6 +54,7 @@ if (app()->environment('local')) {
 // Tajweed endpoints (requires auth)
 Route::middleware('auth')->group(function () {
     // Main Tajweed routes (make sure these match your navbar links)
+    Route::get('/tajweed/checker', [TajweedController::class, 'checker'])->name('tajweed.checker');
     Route::get('/tajweed/ikhfa-haqiqi', [TajweedController::class, 'ikhfaHaqiqi'])->name('tajweed.ikhfa-haqiqi');
     Route::get('/tajweed/izhar-halqi', [TajweedController::class, 'izharHalqi'])->name('tajweed.izhar-halqi');
     Route::get('/tajweed/dataset-audio/{rule}/{filename}', [TajweedController::class, 'playDatasetAudio'])
@@ -159,3 +160,11 @@ Route::get('/quran/{id}', [QuranController::class, 'surah'])->name('quran.surah'
 Route::get('/recite-quran/{surah?}', [QuranController::class, 'showSurah'])
     ->where('surah', '[0-9]+')
     ->name('recite.quran');
+
+// Quran memorization page (optional surah, default = 1)
+Route::post('/memorize-quran/transcribe', [QuranController::class, 'transcribeMemorization'])
+    ->name('memorize.transcribe');
+
+Route::get('/memorize-quran/{surah?}', [QuranController::class, 'memorizeSurah'])
+    ->where('surah', '[0-9]+')
+    ->name('memorize.quran');

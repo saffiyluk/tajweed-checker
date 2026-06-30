@@ -19,3 +19,24 @@ yarn-error.log
 /.vscode
 .venv/
 *.npy
+
+# Python cache
+python/__pycache__/
+__pycache__/
+*.pyc
+
+# Python virtual environment
+venv/
+.venv/
+python/venv/
+
+# Training backups
+*.backup-before-retrain
+
+# Dataset - do not push large training dataset
+python/Dataset/
+python/dataset/
+
+# Logs / local files
+storage/logs/*.log
+.envphoto_2026-06-28_03-51-44-transparent.png

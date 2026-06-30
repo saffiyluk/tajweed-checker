@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import traceback
 import tempfile
@@ -18,6 +19,8 @@ if hasattr(sys.stderr, "reconfigure"):
 
 DEFAULT_OPENAI_WHISPER_MODEL = "small"
 TARGET_SAMPLE_RATE = 16000
+ARABIC_TEXT_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\s]+")
+ARABIC_LETTER_RE = re.compile(r"[\u0621-\u064A]")
 
 
 def fail_missing_dependency(package_name):
@@ -197,6 +200,18 @@ def transcribe_with_transformers(audio_path, model_name):
     return str(result.get("text", "")).strip()
 
 
+def keep_arabic_text(text):
+    text = str(text or "")
+    Arabic_chunks = ARABIC_TEXT_RE.findall(text)
+    text = " ".join(chunk.strip() for chunk in Arabic_chunks if chunk.strip())
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if not ARABIC_LETTER_RE.search(text):
+        return ""
+
+    return text
+
+
 def is_huggingface_model(model_name):
     return "/" in model_name or "\\" in model_name or os.path.isdir(model_name) or model_name.startswith("hf:")
 
@@ -216,10 +231,10 @@ def main():
     audio_path = sys.argv[1]
     model_name = os.environ.get("WHISPER_MODEL", DEFAULT_OPENAI_WHISPER_MODEL).strip()
     arabic_prompt = (
-        "The audio is Quran recitation in Arabic. "
-        "Return only the Arabic Quran words. "
-        "Do not translate. Do not add Latin text. "
-        "Transcribe the closest Quranic Arabic wording even if the recitation is imperfect."
+        "هذه تلاوة قرآن باللغة العربية. "
+        "اكتب الكلمات العربية فقط كما تُسمع. "
+        "لا تترجم. لا تكتب الإنجليزية. لا تضف شرحا أو علامات ترقيم. "
+        "إذا كان الصوت غير واضح فاكتب الكلمات العربية القرآنية الأقرب فقط."
     )
 
     if model_name.startswith("hf:"):
@@ -252,11 +267,15 @@ def main():
             except OSError:
                 pass
 
+    raw_text = text
+    text = keep_arabic_text(text)
+
     print(
         json.dumps(
             {
                 "status": "success" if text else "empty",
                 "text": text,
+                "raw_text": raw_text,
                 "backend": backend,
                 "model": actual_model,
                 "requested_model": model_name,

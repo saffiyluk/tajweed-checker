@@ -2,216 +2,466 @@
 
 @section('content')
 <style>
-    /* Tajweed-inspired background with subtle pattern - keeping original color palette */
     body {
-        background: linear-gradient(135deg, #f5f7fa 0%, #e9edf2 100%);
-        position: relative;
+        background:
+            radial-gradient(circle at top left, rgba(13, 110, 253, 0.12), transparent 35%),
+            radial-gradient(circle at bottom right, rgba(194, 153, 80, 0.12), transparent 35%),
+            linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%);
+        min-height: 100vh;
     }
-    
-    /* Subtle Islamic geometric pattern overlay - very light */
-    body::before {
+
+    /* Fix navbar nampak terlalu default */
+    .navbar {
+        background: rgba(255, 255, 255, 0.9) !important;
+        backdrop-filter: blur(14px);
+        box-shadow: 0 8px 25px rgba(15, 23, 42, 0.06);
+        min-height: 72px;
+        z-index: 10;
+    }
+
+    .navbar-brand {
+        font-weight: 800;
+        color: #1d4ed8 !important;
+        letter-spacing: -0.5px;
+    }
+
+    .navbar-brand::after {
+        content: " Tajweed Checker";
+    }
+
+    .navbar-brand {
+        font-size: 0;
+    }
+
+    .navbar-brand::after {
+        font-size: 1.25rem;
+    }
+
+    .auth-wrapper {
+        min-height: calc(100vh - 180px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 1rem 5rem;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .auth-wrapper::before {
         content: "";
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" opacity="0.03"><path fill="none" stroke="%238B7355" stroke-width="1.2" d="M400 50 L500 150 L400 250 L300 150 Z M400 250 L550 400 L400 550 L250 400 Z M400 550 L500 650 L400 750 L300 650 Z M250 400 L150 500 L250 600 L350 500 Z M550 400 L650 500 L550 600 L450 500 Z"/><circle cx="400" cy="400" r="100" stroke="%238B7355" fill="none" stroke-width="0.8"/><circle cx="400" cy="400" r="180" stroke="%238B7355" fill="none" stroke-width="0.6"/></svg>');
-        background-repeat: repeat;
-        background-size: 160px;
-        pointer-events: none;
+        position: absolute;
+        width: 420px;
+        height: 420px;
+        border-radius: 50%;
+        background: rgba(13, 110, 253, 0.08);
+        top: 40px;
+        left: -120px;
+        filter: blur(5px);
     }
-    
-    .container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    
-    /* Card with subtle shadow and border - keeping original colors */
-    .card {
-        border-radius: 20px;
-        overflow: hidden;
-        border: none;
-        box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-        background: #ffffff;
-        margin: 0 auto;
-        margin-top: auto;
-        margin-bottom: auto;
-    }
-    
-    .card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 25px 45px -12px rgba(0, 0, 0, 0.15);
-    }
-    
-    /* Card header with original Bootstrap primary color */
-    .card-header {
-        background: #0d6efd;
-        border-bottom: none;
-        padding: 1.25rem 1.5rem;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    /* Decorative arabesque in header */
-    .card-header::before {
+
+    .auth-wrapper::after {
         content: "۞";
         position: absolute;
-        right: 15px;
-        top: 50%;
-        transform: translateY(-50%);
-        font-size: 3.5rem;
-        opacity: 0.08;
-        color: white;
+        right: 8%;
+        bottom: 8%;
+        font-size: 8rem;
+        color: rgba(194, 153, 80, 0.08);
         font-family: serif;
-        pointer-events: none;
     }
-    
-    .card-header h4 {
-        margin: 0;
-        font-weight: 600;
-        letter-spacing: 0.3px;
+
+    .auth-card {
+        width: 100%;
+        max-width: 980px;
+        display: grid;
+        grid-template-columns: 1fr 1.05fr;
+        background: #ffffff;
+        border-radius: 28px;
+        overflow: hidden;
+        box-shadow: 0 30px 80px rgba(15, 23, 42, 0.14);
         position: relative;
         z-index: 1;
     }
-    
-    .card-header h4 i {
-        margin-right: 8px;
+
+    .auth-left {
+        background:
+            linear-gradient(135deg, rgba(13, 110, 253, 0.95), rgba(30, 64, 175, 0.98)),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140' viewBox='0 0 140 140'%3E%3Cpath d='M70 10 L95 35 L70 60 L45 35 Z M70 80 L95 105 L70 130 L45 105 Z M10 70 L35 45 L60 70 L35 95 Z M80 70 L105 45 L130 70 L105 95 Z' fill='none' stroke='white' stroke-opacity='0.16' stroke-width='2'/%3E%3C/svg%3E");
+        color: white;
+        padding: 3.2rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 520px;
     }
-    
-    .card-body {
-        padding: 2rem 1.8rem;
+
+    .brand-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-weight: 800;
+        font-size: 1.1rem;
+        letter-spacing: -0.3px;
     }
-    
-    /* Form labels - keep original styling */
-    .col-form-label {
-        font-weight: 500;
+
+    .brand-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.16);
+        display: grid;
+        place-items: center;
+        font-size: 1.35rem;
+        border: 1px solid rgba(255, 255, 255, 0.22);
     }
-    
-    /* Input fields with subtle focus effect */
+
+    .auth-left h1 {
+        font-size: 2.4rem;
+        line-height: 1.15;
+        font-weight: 800;
+        letter-spacing: -1px;
+        margin: 2.8rem 0 1rem;
+    }
+
+    .auth-left p {
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 1rem;
+        line-height: 1.7;
+        margin: 0;
+    }
+
+    .feature-list {
+        display: grid;
+        gap: 0.85rem;
+        margin-top: 2rem;
+    }
+
+    .feature-item {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 0.95rem;
+    }
+
+    .feature-dot {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: rgba(255, 255, 255, 0.16);
+        font-size: 0.85rem;
+    }
+
+    .auth-right {
+        padding: 3.2rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .form-title {
+        margin-bottom: 2rem;
+    }
+
+    .form-title span {
+        display: inline-block;
+        color: #c29950;
+        font-weight: 700;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-title h2 {
+        color: #0f172a;
+        font-weight: 800;
+        letter-spacing: -0.7px;
+        margin: 0;
+    }
+
+    .form-title p {
+        color: #64748b;
+        margin-top: 0.65rem;
+        margin-bottom: 0;
+    }
+
+    .form-group-custom {
+        margin-bottom: 1.15rem;
+    }
+
+    .form-label-custom {
+        color: #334155;
+        font-weight: 700;
+        font-size: 0.92rem;
+        margin-bottom: 0.5rem;
+    }
+
     .form-control {
-        border-radius: 12px;
-        border: 1px solid #dee2e6;
-        padding: 0.6rem 1rem;
+        height: 52px;
+        border-radius: 15px;
+        border: 1px solid #dbe3ef;
+        background: #f8fafc;
+        padding: 0.75rem 1rem;
+        color: #0f172a;
         transition: all 0.2s ease;
     }
-    
+
     .form-control:focus {
-        border-color: #0d6efd;
-        box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+        background: #ffffff;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
     }
-    
-    /* Keep original button styling with slight hover enhancement */
-    .btn-primary {
-        border-radius: 40px;
-        padding: 0.6rem 1.5rem;
-        font-weight: 500;
+
+    .form-check {
+        margin-top: 0.25rem;
+    }
+
+    .form-check-label {
+        color: #475569;
+        font-size: 0.92rem;
+    }
+
+    .form-check-input {
+        border-radius: 6px;
+    }
+
+    .form-check-input:checked {
+        background-color: #2563eb;
+        border-color: #2563eb;
+    }
+
+    .login-actions {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1.5rem;
+    }
+
+    .btn-login {
+        border: none;
+        min-width: 140px;
+        height: 50px;
+        border-radius: 15px;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: white;
+        font-weight: 800;
+        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.22);
         transition: all 0.2s ease;
     }
-    
-    .btn-primary:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+
+    .btn-login:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 30px rgba(37, 99, 235, 0.28);
+        color: white;
     }
-    
-    .btn-primary:active {
-        transform: translateY(0);
-    }
-    
-    /* Link styling */
-    .btn-link {
+
+    .forgot-link {
+        color: #2563eb;
         text-decoration: none;
-        font-weight: 500;
-        padding: 0.6rem 1rem;
+        font-weight: 700;
+        font-size: 0.92rem;
     }
-    
-    .btn-link:hover {
+
+    .forgot-link:hover {
         text-decoration: underline;
     }
-    
-    /* Checkbox styling - keep original */
-    .form-check-input:checked {
-        background-color: #0d6efd;
-        border-color: #0d6efd;
+
+    .register-note {
+        margin-top: 2rem;
+        padding-top: 1.4rem;
+        border-top: 1px solid #eef2f7;
+        color: #64748b;
+        font-size: 0.92rem;
     }
-    
-    /* Responsive */
-    @media (max-width: 768px) {
-        .card-body {
-            padding: 1.5rem;
+
+    .register-note a {
+        color: #2563eb;
+        font-weight: 800;
+        text-decoration: none;
+    }
+
+    .invalid-feedback {
+        font-weight: 600;
+        margin-top: 0.45rem;
+    }
+
+    @media (max-width: 992px) {
+        .auth-card {
+            grid-template-columns: 1fr;
+            max-width: 620px;
+        }
+
+        .auth-left {
+            min-height: auto;
+            padding: 2.4rem;
+        }
+
+        .auth-left h1 {
+            font-size: 2rem;
+            margin-top: 2rem;
+        }
+
+        .auth-right {
+            padding: 2.4rem;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .auth-wrapper {
+            padding: 2rem 0.9rem 4rem;
+            align-items: flex-start;
+        }
+
+        .auth-card {
+            border-radius: 22px;
+        }
+
+        .auth-left,
+        .auth-right {
+            padding: 1.6rem;
+        }
+
+        .auth-left h1 {
+            font-size: 1.75rem;
+        }
+
+        .login-actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .btn-login {
+            width: 100%;
+        }
+
+        .forgot-link {
+            text-align: center;
         }
     }
 </style>
 
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="mb-0">{{ __('Login') }}</h4>
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-left">
+            <div>
+                <div class="brand-badge">
+                    <div class="brand-icon">ق</div>
+                    <div>Tajweed Checker</div>
                 </div>
 
-                <div class="card-body">
-                    <form method="POST" action="{{ route('login') }}">
-                        @csrf
+                <h1>Perfect your Quran recitation with AI guidance.</h1>
+                <p>
+                    Login to continue your recitation practice, upload your audio,
+                    and receive tajweed feedback for Izhar and Ikhfa rules.
+                </p>
 
-                        <div class="row mb-3">
-                            <label for="email" class="col-md-4 col-form-label text-md-end">{{ __('Email Address') }}</label>
-
-                            <div class="col-md-6">
-                                <input id="email" type="email" class="form-control @error('email') is-invalid @enderror" name="email" value="{{ old('email') }}" required autocomplete="email" autofocus>
-
-                                @error('email')
-                                    <span class="invalid-feedback" role="alert">
-                                        <strong>{{ $message }}</strong>
-                                    </span>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <div class="row mb-3">
-                            <label for="password" class="col-md-4 col-form-label text-md-end">{{ __('Password') }}</label>
-
-                            <div class="col-md-6">
-                                <input id="password" type="password" class="form-control @error('password') is-invalid @enderror" name="password" required autocomplete="current-password">
-
-                                @error('password')
-                                    <span class="invalid-feedback" role="alert">
-                                        <strong>{{ $message }}</strong>
-                                    </span>
-                                @enderror
-                            </div>
-                        </div>
-
-                        <div class="row mb-3">
-                            <div class="col-md-6 offset-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="remember" id="remember" {{ old('remember') ? 'checked' : '' }}>
-
-                                    <label class="form-check-label" for="remember">
-                                        {{ __('Remember Me') }}
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row mb-0">
-                            <div class="col-md-8 offset-md-4">
-                                <button type="submit" class="btn btn-primary">
-                                    {{ __('Login') }}
-                                </button>
-
-                                @if (Route::has('password.request'))
-                                    <a class="btn btn-link" href="{{ route('password.request') }}">
-                                        {{ __('Forgot Your Password?') }}
-                                    </a>
-                                @endif
-                            </div>
-                        </div>
-                    </form>
+                <div class="feature-list">
+                    <div class="feature-item">
+                        <div class="feature-dot">✓</div>
+                        <div>AI-powered pronunciation checking</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-dot">✓</div>
+                        <div>Record and upload your recitation</div>
+                    </div>
+                    <div class="feature-item">
+                        <div class="feature-dot">✓</div>
+                        <div>Personal recitation progress history</div>
+                    </div>
                 </div>
             </div>
+
+            <p class="mt-4">
+                “Read, practise, improve.”
+            </p>
+        </div>
+
+        <div class="auth-right">
+            <div class="form-title">
+                <span>Welcome back</span>
+                <h2>Login to your account</h2>
+                <p>Enter your email and password to access your dashboard.</p>
+            </div>
+
+            <form method="POST" action="{{ route('login') }}">
+                @csrf
+
+                <div class="form-group-custom">
+                    <label for="email" class="form-label-custom">{{ __('Email Address') }}</label>
+                    <input
+                        id="email"
+                        type="email"
+                        class="form-control @error('email') is-invalid @enderror"
+                        name="email"
+                        value="{{ old('email') }}"
+                        required
+                        autocomplete="email"
+                        autofocus
+                        placeholder="Enter your email"
+                    >
+
+                    @error('email')
+                        <span class="invalid-feedback" role="alert">
+                            <strong>{{ $message }}</strong>
+                        </span>
+                    @enderror
+                </div>
+
+                <div class="form-group-custom">
+                    <label for="password" class="form-label-custom">{{ __('Password') }}</label>
+                    <input
+                        id="password"
+                        type="password"
+                        class="form-control @error('password') is-invalid @enderror"
+                        name="password"
+                        required
+                        autocomplete="current-password"
+                        placeholder="Enter your password"
+                    >
+
+                    @error('password')
+                        <span class="invalid-feedback" role="alert">
+                            <strong>{{ $message }}</strong>
+                        </span>
+                    @enderror
+                </div>
+
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="remember"
+                        id="remember"
+                        {{ old('remember') ? 'checked' : '' }}
+                    >
+
+                    <label class="form-check-label" for="remember">
+                        {{ __('Remember Me') }}
+                    </label>
+                </div>
+
+                <div class="login-actions">
+                    <button type="submit" class="btn btn-login">
+                        {{ __('Login') }}
+                    </button>
+
+                    @if (Route::has('password.request'))
+                        <a class="forgot-link" href="{{ route('password.request') }}">
+                            {{ __('Forgot Password?') }}
+                        </a>
+                    @endif
+                </div>
+
+                @if (Route::has('register'))
+                    <div class="register-note">
+                        Don’t have an account?
+                        <a href="{{ route('register') }}">Create one here</a>
+                    </div>
+                @endif
+            </form>
         </div>
     </div>
 </div>

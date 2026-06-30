@@ -34,6 +34,7 @@ try:
     import numpy as np
     import soundfile as sf
     from tensorflow.keras.models import load_model
+    from audio_cleaning import SAMPLE_RATE, clean_recitation_audio
 except ModuleNotFoundError as e:
     print(
         json.dumps(
@@ -114,7 +115,7 @@ def mel_filterbank(sample_rate, n_fft, n_mels):
     return filters
 
 
-def load_audio(file_path, sample_rate=16000):
+def load_audio(file_path, sample_rate=SAMPLE_RATE):
     temp_wav = None
 
     try:
@@ -159,10 +160,6 @@ def load_audio(file_path, sample_rate=16000):
     if sr != sample_rate:
         y = resample_audio(y, sr, sample_rate)
 
-    max_abs = np.max(np.abs(y)) if y.size else 0
-    if max_abs > 0:
-        y = y / max_abs
-
     return y
 
 
@@ -178,24 +175,11 @@ def resample_audio(y, original_rate, target_rate):
     return np.interp(target_positions, source_positions, y).astype(np.float32)
 
 
-def trim_silence(y, threshold=0.03):
-    if y.size == 0:
-        return y
-
-    mask = np.abs(y) > threshold
-
-    if not np.any(mask):
-        return y
-
-    indices = np.where(mask)[0]
-    return y[indices[0]:indices[-1] + 1]
-
-
 def preprocess(file_path):
-    y = load_audio(file_path, sample_rate=16000)
-    y = trim_silence(y)
+    y = load_audio(file_path, sample_rate=SAMPLE_RATE)
+    y = clean_recitation_audio(y, sample_rate=SAMPLE_RATE)
 
-    target_length = 16000 * 2
+    target_length = SAMPLE_RATE * 2
     y = np.pad(y, (0, max(0, target_length - len(y))))[:target_length]
 
     n_fft = 2048
@@ -205,7 +189,7 @@ def preprocess(file_path):
     spectrum = np.fft.rfft(frames * window, n=n_fft, axis=1).T
 
     power = np.abs(spectrum) ** 2
-    mel = np.dot(mel_filterbank(16000, n_fft, 128), power)
+    mel = np.dot(mel_filterbank(SAMPLE_RATE, n_fft, 128), power)
     mel = 10.0 * np.log10(np.maximum(mel, 1e-10))
     mel = mel - np.max(mel)
     mel = (mel - mel.min()) / (mel.max() - mel.min() + 1e-8)
@@ -227,6 +211,78 @@ def frame_audio(y, frame_length, hop_length):
         frames[index] = y[start:start + frame_length]
 
     return frames
+
+
+def estimate_ghunnah_features(file_path):
+    y = load_audio(file_path, sample_rate=SAMPLE_RATE)
+    y = clean_recitation_audio(y, sample_rate=SAMPLE_RATE)
+
+    frame_length = 512
+    hop_length = 160
+    frames = frame_audio(y, frame_length, hop_length)
+    window = np.hanning(frame_length).astype(np.float32)
+    spectrum = np.abs(np.fft.rfft(frames * window, axis=1)) ** 2
+    frequencies = np.fft.rfftfreq(frame_length, d=1.0 / SAMPLE_RATE)
+
+    total_power = np.sum(spectrum, axis=1) + 1e-8
+    nasal_band = np.sum(spectrum[:, (frequencies >= 220) & (frequencies < 950)], axis=1) / total_power
+    fricative_band = np.sum(spectrum[:, (frequencies >= 2500) & (frequencies < 7500)], axis=1) / total_power
+    frame_rms = np.sqrt(np.mean(frames ** 2, axis=1) + 1e-8)
+    zero_crossing_rate = np.mean(np.diff(np.signbit(frames), axis=1), axis=1)
+    voiced_threshold = max(0.015, float(np.percentile(frame_rms, 60)) * 0.65)
+
+    nasal_frames = (
+        (frame_rms > voiced_threshold)
+        & (nasal_band > 0.28)
+        & (fricative_band < 0.42)
+        & (zero_crossing_rate < 0.16)
+    )
+
+    longest_run = 0
+    current_run = 0
+
+    for is_nasal_frame in nasal_frames:
+        current_run = current_run + 1 if is_nasal_frame else 0
+        longest_run = max(longest_run, current_run)
+
+    segments = []
+    start_index = None
+
+    for index, is_nasal_frame in enumerate(nasal_frames):
+        if is_nasal_frame and start_index is None:
+            start_index = index
+        elif not is_nasal_frame and start_index is not None:
+            end_index = index - 1
+            segments.append(
+                {
+                    "start_ms": round(start_index * hop_length / SAMPLE_RATE * 1000.0, 2),
+                    "end_ms": round((end_index * hop_length + frame_length) / SAMPLE_RATE * 1000.0, 2),
+                    "duration_ms": round(((end_index - start_index + 1) * hop_length) / SAMPLE_RATE * 1000.0, 2),
+                }
+            )
+            start_index = None
+
+    if start_index is not None:
+        end_index = len(nasal_frames) - 1
+        segments.append(
+            {
+                "start_ms": round(start_index * hop_length / SAMPLE_RATE * 1000.0, 2),
+                "end_ms": round((end_index * hop_length + frame_length) / SAMPLE_RATE * 1000.0, 2),
+                "duration_ms": round(((end_index - start_index + 1) * hop_length) / SAMPLE_RATE * 1000.0, 2),
+            }
+        )
+
+    ghunnah_duration_ms = longest_run * hop_length / SAMPLE_RATE * 1000.0
+    ghunnah_frame_ratio = float(np.mean(nasal_frames)) if nasal_frames.size else 0.0
+    ghunnah_strength = float(np.mean(nasal_band[nasal_frames])) if np.any(nasal_frames) else 0.0
+
+    return {
+        "duration_ms": round(float(y.size / SAMPLE_RATE * 1000.0), 2),
+        "ghunnah_duration_ms": round(float(ghunnah_duration_ms), 2),
+        "ghunnah_frame_ratio": round(ghunnah_frame_ratio, 4),
+        "ghunnah_strength": round(ghunnah_strength, 4),
+        "ghunnah_segments": segments,
+    }
 
 
 def probability_map(classes, probabilities):
@@ -365,6 +421,7 @@ def main():
 
     result = {
         **ensemble_result,
+        "quality": estimate_ghunnah_features(file_path),
         "cnn": cnn_result,
         "feature_model": feature_result,
     }
