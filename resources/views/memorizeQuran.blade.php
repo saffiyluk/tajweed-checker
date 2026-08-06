@@ -1148,6 +1148,8 @@ document.addEventListener('DOMContentLoaded', function () {
     let mediaRecorder = null;
     let mediaStream = null;
     let audioChunks = [];
+    let recordedMimeType = 'audio/webm';
+    let backendFallbackRequired = false;
     let wordStates = [];
     let lastAlignment = [];
     let lastExtraWords = [];
@@ -1827,9 +1829,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 autoGainControl: true
             }
         }).then(stream => {
+            if (!isListening) {
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+
             mediaStream = stream;
             const mimeType = getSupportedMimeType();
             const options = mimeType ? { mimeType } : {};
+            recordedMimeType = mimeType || 'audio/webm';
 
             audioChunks = [];
             mediaRecorder = new MediaRecorder(mediaStream, options);
@@ -1838,8 +1846,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (event.data && event.data.size > 0) audioChunks.push(event.data);
             };
 
-            mediaRecorder.onstop = function () {
+            mediaRecorder.onstop = async function () {
                 stopTracks();
+
+                if (backendFallbackRequired && audioChunks.length) {
+                    await transcribeRecordedAudio();
+                }
             };
 
             mediaRecorder.start();
@@ -1848,9 +1860,67 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    async function transcribeRecordedAudio() {
+        const blob = new Blob(audioChunks, { type: recordedMimeType || 'audio/webm' });
+
+        if (!blob.size) {
+            setStatus('No audio was captured. Please try again.');
+            return;
+        }
+
+        const extension = recordedMimeType.includes('mp4')
+            ? 'm4a'
+            : (recordedMimeType.includes('ogg') ? 'ogg' : 'webm');
+        const formData = new FormData();
+        formData.append('audio', blob, `memorization.${extension}`);
+
+        setStatus('Transcribing recording...');
+
+        try {
+            const response = await fetch(transcribeUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken
+                },
+                body: formData
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (!response.ok || result.status === 'failed' || result.status === 'timeout') {
+                throw new Error(result.error || 'Transcription could not be completed.');
+            }
+
+            const transcript = keepArabicClient(result.text || '');
+
+            if (!transcript) {
+                setStatus('No clear Arabic speech was detected. Please record again.');
+                return;
+            }
+
+            if (transcriptBox) transcriptBox.textContent = transcript;
+            liveTranscriptBuffer = transcript;
+            const words = normalizeArabic(transcript).split(' ').filter(Boolean);
+            processLiveWords(words, { isFinal: true });
+            setStatus('Server transcription complete');
+        } catch (error) {
+            setStatus(error.message || 'Server transcription failed. Please try again.');
+        } finally {
+            backendFallbackRequired = false;
+            audioChunks = [];
+        }
+    }
+
     function startLiveChecking() {
         if (!speechRecognition && !setupLiveSpeechRecognition()) {
-            setStatus('Live transcript requires Chrome/Edge. Backend transcription can be used only as slower fallback.');
+            isListening = true;
+            backendFallbackRequired = true;
+            liveSpokenWords = [];
+            if (micBtn) micBtn.classList.add('listening');
+            updateTracker();
+            activateChunk(currentChunkIndex);
+            setStatus('Recording... tap the microphone again to transcribe.');
+            startOptionalRecording();
             return;
         }
 
@@ -1863,6 +1933,7 @@ document.addEventListener('DOMContentLoaded', function () {
             pendingWrongCount = 0;
             pendingSpokenWords = [];
             liveSpokenWords = [];
+            backendFallbackRequired = false;
             lastInterimSignature = '';
             updateTracker();
             activateChunk(currentChunkIndex);
@@ -1890,11 +1961,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
         if (micBtn) micBtn.classList.remove('listening');
 
+        if (mediaRecorder && mediaRecorder.state !== 'inactive' && liveSpokenWords.length === 0) {
+            backendFallbackRequired = true;
+        }
+
         if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
         else stopTracks();
 
         updateTracker();
-        setStatus('Ready');
+        setStatus(backendFallbackRequired ? 'Preparing server transcription...' : 'Ready');
     }
 
     function getSupportedMimeType() {

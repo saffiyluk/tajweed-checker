@@ -1,7 +1,7 @@
 @extends('layouts.admin')
 
 @section('page-title', 'Dashboard')
-@section('page-subtitle', 'Admin overview for users, datasets, models, and submissions')
+@section('page-subtitle', 'Admin overview for users, submissions, corrections, and system status')
 
 @section('content')
 <div class="row g-3 mb-4">
@@ -37,8 +37,8 @@
 
 <div class="row g-3 mb-4">
     <div class="col-md-3">
-        <a class="btn btn-primary w-100 py-3" href="{{ route('admin.datasets.index') }}">
-            <i class="fas fa-upload me-2"></i>Upload Datasets
+        <a class="btn btn-primary w-100 py-3" href="{{ route('admin.recitations.index') }}">
+            <i class="fas fa-microphone me-2"></i>Review Submissions
         </a>
     </div>
     <div class="col-md-3">
@@ -47,8 +47,8 @@
         </a>
     </div>
     <div class="col-md-3">
-        <a class="btn btn-outline-success w-100 py-3" href="{{ route('admin.datasets.index') }}">
-            <i class="fas fa-rotate me-2"></i>Retrain Model
+        <a class="btn btn-outline-success w-100 py-3" href="{{ route('admin.analytics') }}">
+            <i class="fas fa-chart-line me-2"></i>View Analytics
         </a>
     </div>
     <div class="col-md-3">

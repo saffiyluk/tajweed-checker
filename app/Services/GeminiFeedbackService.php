@@ -100,6 +100,7 @@ class GeminiFeedbackService
 
         foreach ($models as $model) {
             try {
+                // ===== REPORT SCREENSHOT START: Section 4.3.13 - Feedback Generation =====
                 $response = Http::timeout(25)
                     ->withHeaders([
                         'x-goog-api-key' => $apiKey,
@@ -132,6 +133,7 @@ class GeminiFeedbackService
 
                 $responseJson = $response->json();
                 $text = trim((string) data_get($responseJson, 'candidates.0.content.parts.0.text', ''));
+                // ===== REPORT SCREENSHOT END: Section 4.3.13 - Feedback Generation =====
 
                 if ($this->isUsableFeedback($text)) {
                     Log::info('Gemini feedback generated', [

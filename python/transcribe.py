@@ -132,17 +132,26 @@ def load_audio_with_fallback(audio_path, sample_rate=TARGET_SAMPLE_RATE):
     return y, sr
 
 
+# ===== REPORT SCREENSHOT START: Section 4.3.9A - Transcription Audio Preparation =====
 def prepare_audio_for_transcription(audio_path):
     y, sr = load_audio_with_fallback(audio_path, sample_rate=TARGET_SAMPLE_RATE)
-    y = trim_silence(y)
-    y = normalize_audio(y)
+
+    try:
+        from audio_cleaning import clean_recitation_audio
+
+        y = clean_recitation_audio(y, sample_rate=sr)
+    except Exception:
+        y = trim_silence(y)
+        y = normalize_audio(y)
 
     temp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     temp.close()
     sf.write(temp.name, y, sr, subtype="PCM_16")
     return temp.name
+# ===== REPORT SCREENSHOT END: Section 4.3.9A - Transcription Audio Preparation =====
 
 
+# ===== REPORT SCREENSHOT START: Section 4.3.9B - Whisper Speech-to-Text =====
 def transcribe_with_openai_whisper(audio_path, model_name, arabic_prompt):
     try:
         import whisper
@@ -169,35 +178,59 @@ def transcribe_with_openai_whisper(audio_path, model_name, arabic_prompt):
             )
 
     return result.get("text", "").strip()
+# ===== REPORT SCREENSHOT END: Section 4.3.9B - Whisper Speech-to-Text =====
 
 
 def transcribe_with_transformers(audio_path, model_name):
     try:
         import torch
-        from transformers import pipeline
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor, logging as transformers_logging
     except ModuleNotFoundError as exc:
         missing_name = exc.name or "transformers runtime dependency"
         raise RuntimeError(
             f"Missing Python dependency: {missing_name}. Install dependencies with: python -m pip install -r python/requirements.txt"
         ) from exc
 
-    device = 0 if torch.cuda.is_available() else -1
-    pipe = pipeline(
-        "automatic-speech-recognition",
-        model=model_name,
-        device=device,
+    transformers_logging.set_verbosity_error()
+    speech, rate = load_audio_with_fallback(audio_path, sample_rate=TARGET_SAMPLE_RATE)
+    processor = WhisperProcessor.from_pretrained(model_name)
+    model = WhisperForConditionalGeneration.from_pretrained(
+        model_name,
+        torch_dtype=torch.float32,
+        low_cpu_mem_usage=True,
     )
 
-    result = pipe(
-        audio_path,
-        return_timestamps=False,
-        generate_kwargs={
-            "language": "ar",
-            "task": "transcribe",
-        },
+    if torch.cuda.is_available():
+        model = model.to("cuda")
+
+    model.generation_config.forced_decoder_ids = processor.get_decoder_prompt_ids(
+        language="ar",
+        task="transcribe",
     )
 
-    return str(result.get("text", "")).strip()
+    inputs = processor(
+        speech,
+        sampling_rate=rate,
+        return_tensors="pt",
+    )
+
+    generate_kwargs = {
+        "max_length": 448,
+        "num_beams": 5,
+        "repetition_penalty": 1.15,
+        "no_repeat_ngram_size": 4,
+    }
+
+    if hasattr(inputs, "attention_mask"):
+        generate_kwargs["attention_mask"] = inputs.attention_mask.to(model.device)
+
+    with torch.no_grad():
+        generated_ids = model.generate(
+            inputs.input_features.to(model.device),
+            **generate_kwargs,
+        )
+
+    return processor.batch_decode(generated_ids, skip_special_tokens=True)[0].strip()
 
 
 def keep_arabic_text(text):
@@ -210,6 +243,44 @@ def keep_arabic_text(text):
         return ""
 
     return text
+
+
+def is_repetitive_hallucination(text):
+    normalized = re.sub(r"\s+", " ", str(text or "")).strip()
+
+    if not normalized:
+        return False
+
+    prompt_leaks = [
+        "\u0644\u0627 \u062a\u062a\u0631\u062c\u0645",
+        "\u0644\u0627 \u062a\u0643\u062a\u0628",
+        "\u0627\u0643\u062a\u0628 \u0627\u0644\u0643\u0644\u0645\u0627\u062a",
+    ]
+
+    if any(leak in normalized for leak in prompt_leaks):
+        return True
+
+    words = normalized.split()
+
+    if len(words) < 8:
+        return False
+
+    for ngram_size in (2, 3, 4):
+        ngrams = [
+            " ".join(words[index:index + ngram_size])
+            for index in range(0, len(words) - ngram_size + 1)
+        ]
+
+        if not ngrams:
+            continue
+
+        most_common = max(ngrams.count(ngram) for ngram in set(ngrams))
+
+        if most_common >= 3 and most_common / len(ngrams) >= 0.35:
+            return True
+
+    unique_word_ratio = len(set(words)) / len(words)
+    return len(words) >= 12 and unique_word_ratio < 0.35
 
 
 def is_huggingface_model(model_name):
@@ -230,12 +301,7 @@ def main():
 
     audio_path = sys.argv[1]
     model_name = os.environ.get("WHISPER_MODEL", DEFAULT_OPENAI_WHISPER_MODEL).strip()
-    arabic_prompt = (
-        "هذه تلاوة قرآن باللغة العربية. "
-        "اكتب الكلمات العربية فقط كما تُسمع. "
-        "لا تترجم. لا تكتب الإنجليزية. لا تضف شرحا أو علامات ترقيم. "
-        "إذا كان الصوت غير واضح فاكتب الكلمات العربية القرآنية الأقرب فقط."
-    )
+    arabic_prompt = ""
 
     if model_name.startswith("hf:"):
         model_name = model_name[3:]
@@ -269,6 +335,9 @@ def main():
 
     raw_text = text
     text = keep_arabic_text(text)
+
+    if is_repetitive_hallucination(text):
+        text = ""
 
     print(
         json.dumps(

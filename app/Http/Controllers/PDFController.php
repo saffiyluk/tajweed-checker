@@ -2,26 +2,25 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use TCPDF;
 use App\Models\AnalysisResult;
 use App\Models\User;
+use TCPDF;
 
 class PDFController extends Controller
 {
-    public function generateReport(Request $request, $userId)
+    public function __construct()
     {
-        // Authorization: user can only access own report.
-        // If admin needs access, adjust this condition based on your role system.
-        if ($request->user() && $request->user()->id !== (int) $userId) {
-            abort(403);
-        }
+        $this->middleware('auth');
+    }
 
-        $user = User::findOrFail($userId);
+    public function generateReport(User $user)
+    {
+        // ===== REPORT SCREENSHOT START: Section 4.3.15 - PDF Progress Report Data =====
+        $this->authorize('viewProgressReport', $user);
 
         $analyses = AnalysisResult::with('audioRecitation')
-            ->whereHas('audioRecitation', function ($query) use ($userId) {
-                $query->where('user_id', $userId);
+            ->whereHas('audioRecitation', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
             })
             ->latest()
             ->get();
@@ -29,14 +28,22 @@ class PDFController extends Controller
         $totalAnalyses = $analyses->count();
 
         $correctCount = $analyses->filter(function ($analysis) {
-            return strtolower((string) $analysis->correctness) === 'correct';
+            return $analysis->displayOutcomeKey() === 'correct';
         })->count();
 
-        $needsPracticeCount = $totalAnalyses - $correctCount;
+        $needsPracticeCount = $analyses->filter(function ($analysis) {
+            return $analysis->displayOutcomeKey() === 'incorrect';
+        })->count();
 
-        $accuracyRate = $totalAnalyses > 0
-            ? round(($correctCount / $totalAnalyses) * 100)
+        $uncertainCount = $analyses->filter(function ($analysis) {
+            return $analysis->displayOutcomeKey() === 'uncertain';
+        })->count();
+
+        $decidedCount = $correctCount + $needsPracticeCount;
+        $accuracyRate = $decidedCount > 0
+            ? round(($correctCount / $decidedCount) * 100)
             : 0;
+        // ===== REPORT SCREENSHOT END: Section 4.3.15 - PDF Progress Report Data =====
 
         $latestAnalysisDate = $analyses->first()?->audioRecitation?->created_at
             ? $analyses->first()->audioRecitation->created_at->format('d M Y')
@@ -63,15 +70,15 @@ class PDFController extends Controller
 
             if (is_array($suggestions)) {
                 return implode('<br>', array_map(function ($item) use ($esc) {
-                    return '&bull; ' . $esc($item);
+                    return '&bull; '.$esc($item);
                 }, $suggestions));
             }
 
             return $esc($suggestions);
         };
 
-        $formatCorrectness = function ($correctness) use ($esc) {
-            $value = strtolower((string) $correctness);
+        $formatCorrectness = function (AnalysisResult $analysis) {
+            $value = $analysis->displayOutcomeKey();
 
             if ($value === 'correct') {
                 return '<span style="color:#15803d; font-weight:bold;">Correct</span>';
@@ -81,7 +88,15 @@ class PDFController extends Controller
                 return '<span style="color:#b91c1c; font-weight:bold;">Needs Practice</span>';
             }
 
-            return $esc($correctness ?: '-');
+            if ($value === 'uncertain') {
+                return '<span style="color:#475569; font-weight:bold;">Not Enough Evidence</span>';
+            }
+
+            if ($value === 'analysis_failed') {
+                return '<span style="color:#b91c1c; font-weight:bold;">Analysis Failed</span>';
+            }
+
+            return '<span style="color:#64748b; font-weight:bold;">Unavailable</span>';
         };
 
         $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
@@ -220,19 +235,19 @@ class PDFController extends Controller
         <table class="info-table" width="100%" cellpadding="4">
             <tr>
                 <td width="25%" class="info-label">Name</td>
-                <td width="75%">' . $esc($user->name ?? 'Unknown') . '</td>
+                <td width="75%">'.$esc($user->name ?? 'Unknown').'</td>
             </tr>
             <tr>
                 <td class="info-label">Email</td>
-                <td>' . $esc($user->email ?? '-') . '</td>
+                <td>'.$esc($user->email ?? '-').'</td>
             </tr>
             <tr>
                 <td class="info-label">Generated On</td>
-                <td>' . $esc($generatedDate) . '</td>
+                <td>'.$esc($generatedDate).'</td>
             </tr>
             <tr>
                 <td class="info-label">Latest Practice</td>
-                <td>' . $esc($latestAnalysisDate) . '</td>
+                <td>'.$esc($latestAnalysisDate).'</td>
             </tr>
         </table>
 
@@ -240,21 +255,25 @@ class PDFController extends Controller
 
         <table class="metric-table" width="100%" cellpadding="5">
             <tr>
-                <td width="25%">
-                    <div class="metric-number">' . $totalAnalyses . '</div>
+                <td width="20%">
+                    <div class="metric-number">'.$totalAnalyses.'</div>
                     <div class="metric-label">Total Attempts</div>
                 </td>
-                <td width="25%">
-                    <div class="metric-number">' . $correctCount . '</div>
+                <td width="20%">
+                    <div class="metric-number">'.$correctCount.'</div>
                     <div class="metric-label">Correct</div>
                 </td>
-                <td width="25%">
-                    <div class="metric-number">' . $needsPracticeCount . '</div>
+                <td width="20%">
+                    <div class="metric-number">'.$needsPracticeCount.'</div>
                     <div class="metric-label">Needs Practice</div>
                 </td>
-                <td width="25%">
-                    <div class="metric-number">' . $accuracyRate . '%</div>
-                    <div class="metric-label">Accuracy Rate</div>
+                <td width="20%">
+                    <div class="metric-number">'.$uncertainCount.'</div>
+                    <div class="metric-label">Not Enough Evidence</div>
+                </td>
+                <td width="20%">
+                    <div class="metric-number">'.$accuracyRate.'%</div>
+                    <div class="metric-label">Correct Rate (Decided)</div>
                 </td>
             </tr>
         </table>
@@ -297,15 +316,15 @@ class PDFController extends Controller
 
                 $feedback = $analysis->feedback_message ?? '-';
                 $suggestions = $formatSuggestions($analysis->suggestions ?? null);
-                $correctness = $formatCorrectness($analysis->correctness ?? '-');
+                $correctness = $formatCorrectness($analysis);
 
                 $html .= '
                     <tr>
-                        <td width="13%">' . $esc($date) . '</td>
-                        <td width="14%">' . $esc(ucfirst((string) $rule)) . '</td>
-                        <td width="18%">' . $correctness . '</td>
-                        <td width="30%">' . $esc($feedback) . '</td>
-                        <td width="25%">' . $suggestions . '</td>
+                        <td width="13%">'.$esc($date).'</td>
+                        <td width="14%">'.$esc(ucfirst((string) $rule)).'</td>
+                        <td width="18%">'.$correctness.'</td>
+                        <td width="30%">'.$esc($feedback).'</td>
+                        <td width="25%">'.$suggestions.'</td>
                     </tr>
                 ';
             }
@@ -327,10 +346,10 @@ class PDFController extends Controller
 
         $pdf->writeHTML($html, true, false, true, false, '');
 
-        $filename = 'tajweed_progress_report_' . $user->id . '.pdf';
+        $filename = 'tajweed_progress_report_'.$user->id.'.pdf';
 
         return response($pdf->Output($filename, 'S'))
             ->header('Content-Type', 'application/pdf')
-            ->header('Content-Disposition', 'inline; filename="' . $filename . '"');
+            ->header('Content-Disposition', 'inline; filename="'.$filename.'"');
     }
 }

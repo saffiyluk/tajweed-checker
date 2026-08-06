@@ -9,10 +9,22 @@
     $analysis = $audioRecitation->analysisResult;
     $confidence = $analysis?->confidence_score;
     $confidencePercent = is_null($confidence) ? null : ($confidence <= 1 ? round($confidence * 100) : round($confidence));
+    $outcomeKey = $analysis?->displayOutcomeKey();
     $statusClass = match($analysis?->processing_status) {
         'completed' => 'completed',
         'processing' => 'processing',
         default => 'pending',
+    };
+    $processingLabel = match($analysis?->processing_status) {
+        'completed' => 'Completed',
+        'processing' => 'Processing',
+        'pending' => 'Pending',
+        'failed' => 'Analysis Failed',
+        default => 'Unavailable',
+    };
+    $correctnessLabel = match($outcomeKey) {
+        'correct', 'incorrect', 'uncertain', 'analysis_failed' => $analysis->displayOutcomeLabel(),
+        default => 'Unavailable',
     };
     $correctionStatusClass = match($analysis?->correction_review_status) {
         'used' => 'completed',
@@ -86,7 +98,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>ML Analysis</h5>
                     @if($analysis)
-                        <span class="badge-status {{ $statusClass }}">{{ ucfirst($analysis->processing_status) }}</span>
+                        <span class="badge-status {{ $statusClass }}">{{ $processingLabel }}</span>
                     @endif
                 </div>
                 <div class="card-body">
@@ -95,12 +107,14 @@
                             <div class="col-md-4">
                                 <div class="border rounded p-3 h-100">
                                     <div class="text-muted small">Correctness</div>
-                                    <div class="h5 mb-0">{{ ucfirst($analysis->correctness ?? 'N/A') }}</div>
+                                    <div class="h5 mb-0">
+                                        {{ $correctnessLabel }}
+                                    </div>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="border rounded p-3 h-100">
-                                    <div class="text-muted small">Confidence</div>
+                                    <div class="text-muted small">Rule Model Confidence</div>
                                     <div class="h5 mb-0">{{ is_null($confidencePercent) ? 'N/A' : $confidencePercent . '%' }}</div>
                                 </div>
                             </div>

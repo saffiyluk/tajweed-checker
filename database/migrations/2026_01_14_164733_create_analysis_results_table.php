@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('analysis_results', function (Blueprint $table) {
             $table->id();
             $table->foreignId('audio_id')->constrained('audio_recitations')->onDelete('cascade');
-            $table->enum('correctness', ['correct', 'incorrect'])->nullable(); // Classification result
+            $table->enum('correctness', ['correct', 'incorrect', 'uncertain'])->nullable(); // Classification result
             $table->decimal('confidence_score', 5, 4); // 0.0000 to 1.0000
             $table->text('feedback_message')->nullable(); // User feedback
             $table->json('detected_errors')->nullable(); // Array of errors

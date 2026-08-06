@@ -1,8 +1,13 @@
 librosa==0.11.0
 tensorflow==2.21.0
 numpy
+noisereduce==2.0.1
 scikit-learn
 soundfile
+pydub==0.25.1
 openai-whisper
 ffmpeg-python
-transformers
+# Quran Muaalem v3_2 records this known-good Transformers runtime in config.json.
+transformers==4.55.4
+quran-muaalem==0.1.0
+quran-transcript==0.5.2

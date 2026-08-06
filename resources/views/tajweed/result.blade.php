@@ -3,17 +3,78 @@
 @section('title', 'Tajweed Analysis Result')
 
 @php
-    $status = data_get($result, 'processing_status', data_get($result, 'status', 'completed'));
+    $storedStatus = data_get($result, 'processing_status', data_get($result, 'status', 'completed'));
+    $storedCorrectness = data_get($result, 'correctness');
+    $displayOutcomeKey = $result instanceof \App\Models\AnalysisResult
+        ? $result->displayOutcomeKey()
+        : (in_array($storedCorrectness, ['correct', 'incorrect', 'uncertain'], true)
+            ? $storedCorrectness
+            : ($storedStatus === 'failed' ? 'analysis_failed' : 'unavailable'));
+    $status = match ($displayOutcomeKey) {
+        'analysis_failed' => 'failed',
+        // Historical low-confidence/runtime `uncertain` rows are unavailable
+        // under the new policy and must not still look successfully completed.
+        'unavailable' => $storedCorrectness === 'uncertain' ? 'failed' : $storedStatus,
+        'processing', 'pending' => $displayOutcomeKey,
+        default => $storedStatus,
+    };
     $duration = data_get($result, 'audio.duration_seconds');
     $confidenceRaw = data_get($result, 'confidence_score', data_get($result, 'confidence', 0));
     $confidence = is_numeric($confidenceRaw) ? (float) $confidenceRaw : 0;
     $confidencePercent = $confidence <= 1 ? round($confidence * 100) : round($confidence);
     $feedback = data_get($result, 'feedback_message', data_get($result, 'feedback', 'No feedback available.'));
-    $correctness = data_get($result, 'correctness');
-    $isUnrelated = collect(data_get($result, 'detected_errors', []))->contains(fn($error) => data_get($error, 'type') === 'unrelated_audio');
+    $correctness = in_array($displayOutcomeKey, ['correct', 'incorrect', 'uncertain'], true)
+        ? $displayOutcomeKey
+        : null;
+    $predictedRule = strtolower((string) data_get($result, 'predicted_rule', ''));
+    $predictedRuleLabel = match ($predictedRule) {
+        'ikhfa' => 'Ikhfa',
+        'izhar' => 'Izhar',
+        'other' => 'Other / Unrelated',
+        default => 'Not stored',
+    };
+    $classificationStatus = (string) data_get($result, 'classification_status', '');
+    $classificationMethod = (string) data_get($result, 'classification_method', '');
+    if ($classificationStatus === 'reference_verified' && $predictedRule === 'other') {
+        $predictedRuleLabel = 'Other (broad classifier only; reference verified)';
+    }
+    $classProbabilities = collect(data_get($result, 'class_probabilities', []))
+        ->filter(fn($value, $label) => in_array((string) $label, ['ikhfa', 'izhar', 'other'], true) && is_numeric($value));
+    $correctnessLabel = match ($correctness) {
+        'correct' => 'Correct',
+        'incorrect' => 'Needs practice',
+        'uncertain' => 'Not enough evidence',
+        default => $displayOutcomeKey === 'unavailable' ? 'Unavailable' : 'N/A',
+    };
+    $detectedErrors = collect(data_get($result, 'detected_errors', []));
     $transcribedText = trim((string) data_get($result, 'transcribed_text', ''));
-    $hasTranscription = $transcribedText !== '' && $transcribedText !== 'Unable to transcribe audio';
-    $transcriptionFailed = $transcribedText === 'Unable to transcribe audio';
+    $transcriptionMetadata = data_get($result, 'model_predictions.transcription', []);
+    $referenceText = trim((string) data_get($transcriptionMetadata, 'reference_text', $transcribedText));
+    $referenceText = $referenceText !== '' ? $referenceText : $transcribedText;
+    $speechTranscript = trim((string) data_get($transcriptionMetadata, 'speech_text', ''));
+    $speechTranscriptSource = trim((string) data_get($transcriptionMetadata, 'speech_source', ''));
+    $speechTranscriptNote = trim((string) data_get($transcriptionMetadata, 'speech_note', ''));
+    $looksLikeGarbageTranscription = function (string $text): bool {
+        preg_match_all('/[\x{0621}-\x{064A}\x{0671}]/u', $text, $matches);
+        $letters = $matches[0] ?? [];
+        $letterCount = count($letters);
+
+        if ($letterCount < 12) {
+            return false;
+        }
+
+        $frequencies = array_count_values($letters);
+        arsort($frequencies);
+        $topCount = (int) reset($frequencies);
+
+        return ($topCount / max(1, $letterCount)) >= 0.72 || (count($frequencies) <= 2 && $letterCount >= 18);
+    };
+    $transcriptionLooksGarbage = $looksLikeGarbageTranscription($referenceText);
+    $hasTranscription = $referenceText !== '' && $referenceText !== 'Unable to transcribe audio' && !$transcriptionLooksGarbage;
+    $speechTranscriptLooksGarbage = $speechTranscript !== '' && $looksLikeGarbageTranscription($speechTranscript);
+    $hasSpeechTranscript = $speechTranscript !== '' && !$speechTranscriptLooksGarbage;
+    $transcriptionFailed = $referenceText === 'Unable to transcribe audio' || $transcriptionLooksGarbage;
+    $hasRuleTargetIssue = $detectedErrors->contains(fn($error) => in_array(data_get($error, 'type'), ['rule_target_missing', 'transcription_unclear'], true));
     $audioId = data_get($result, 'audio.id', data_get($result, 'audio_id'));
     $rule = data_get($result, 'audio.tajweed_rule');
     $predictionFeedback = data_get($result, 'prediction_feedback');
@@ -23,12 +84,43 @@
     $correctionNote = data_get($result, 'correction_note');
     $correctionStatus = data_get($result, 'correction_review_status');
     $correctionSubmittedAt = data_get($result, 'correction_submitted_at');
-    $hasDiacritics = (bool) preg_match('/[\x{064B}-\x{065F}\x{0670}]/u', $transcribedText);
-    $targetAnalysis = collect(data_get($result, 'detected_errors', []))
+    $hasDiacritics = (bool) preg_match('/[\x{064B}-\x{065F}\x{0670}]/u', $referenceText);
+    $targetAnalysis = $detectedErrors
         ->first(fn($error) => data_get($error, 'type') === 'target_analysis');
     $targetResults = collect(data_get($targetAnalysis, 'targets', []))
         ->filter(fn($target) => is_array($target))
         ->values();
+    $evaluatedRuleKeys = collect(['ikhfa', 'izhar'])
+        ->filter(fn(string $candidate) => $targetResults->contains(
+            fn($target) => strtolower((string) data_get($target, 'rule')) === $candidate
+        ))
+        ->values();
+    $evaluatedRulesLabel = $evaluatedRuleKeys->isNotEmpty()
+        ? $evaluatedRuleKeys->map(fn(string $evaluatedRule): string => ucfirst($evaluatedRule))->implode(' & ')
+        : ($rule ? ucfirst((string) $rule) : 'N/A');
+    $evaluatedRuleCountSummary = $evaluatedRuleKeys
+        ->map(function (string $evaluatedRule) use ($targetResults): string {
+            $count = $targetResults->filter(
+                fn($target) => strtolower((string) data_get($target, 'rule')) === $evaluatedRule
+            )->count();
+
+            return $count . ' ' . ucfirst($evaluatedRule);
+        })
+        ->implode(', ');
+    $hasTrustedPronunciationDecision = $targetResults->isNotEmpty()
+        && $targetResults->every(function ($target): bool {
+            $source = data_get($target, 'target_window_decision_source');
+            $modelStatus = data_get($target, 'target_window_model_status');
+
+            return is_numeric(data_get($target, 'target_window_confidence'))
+                && (
+                    ($modelStatus === 'loaded' && in_array($source, ['trusted_ml', 'ml_and_heuristic_agree', 'strong_ml_with_borderline_heuristic'], true))
+                    || ($modelStatus === 'hybrid_rule_audio' && $source === 'hybrid_rule_audio')
+                );
+        });
+    $confidenceLabel = $hasTrustedPronunciationDecision
+        ? 'Pronunciation confidence'
+        : 'Rule model confidence';
 
     $normalizeArabicLetter = function (string $letter): string {
         return strtr($letter, [
@@ -48,6 +140,28 @@
     $tajweedLetters = [
         'ikhfa' => ['ت', 'ث', 'ج', 'د', 'ذ', 'ز', 'س', 'ش', 'ص', 'ض', 'ط', 'ظ', 'ف', 'ق', 'ك'],
         'izhar' => ['ء', 'ا', 'ه', 'ع', 'ح', 'غ', 'خ'],
+    ];
+
+    $normalizeArabicLetter = function (string $letter): string {
+        return strtr($letter, [
+            "\u{0623}" => "\u{0627}",
+            "\u{0625}" => "\u{0627}",
+            "\u{0622}" => "\u{0627}",
+            "\u{0671}" => "\u{0627}",
+            "\u{0624}" => "\u{0621}",
+            "\u{0626}" => "\u{0621}",
+        ]);
+    };
+
+    $tajweedLetters = [
+        'ikhfa' => [
+            "\u{062A}", "\u{062B}", "\u{062C}", "\u{062F}", "\u{0630}",
+            "\u{0632}", "\u{0633}", "\u{0634}", "\u{0635}", "\u{0636}",
+            "\u{0637}", "\u{0638}", "\u{0641}", "\u{0642}", "\u{0643}",
+        ],
+        'izhar' => [
+            "\u{0621}", "\u{0627}", "\u{0647}", "\u{0639}", "\u{062D}", "\u{063A}", "\u{062E}",
+        ],
     ];
 
     $findPreviousArabicLetter = function (array $chars, int $index) use ($isArabicLetter): ?int {
@@ -89,12 +203,15 @@
         foreach ($chars as $index => $char) {
             $isTanween = in_array($char, ['ً', 'ٌ', 'ٍ'], true);
             $isNoon = $normalizeArabicLetter($char) === 'ن';
+            $isTanween = in_array($char, ["\u{064B}", "\u{064C}", "\u{064D}"], true);
+            $isNoon = $normalizeArabicLetter($char) === "\u{0646}";
             $hasSukun = false;
             $markEnd = $index;
 
             if ($isNoon) {
                 for ($i = $index + 1; $i < count($chars) && $isArabicMark($chars[$i]); $i++) {
                     $markEnd = $i;
+                    $hasSukun = $hasSukun || $chars[$i] === "\u{0652}";
                     $hasSukun = $hasSukun || $chars[$i] === 'ْ';
                 }
             }
@@ -107,6 +224,17 @@
 
             if ($nextIndex === null) {
                 continue;
+            }
+
+            if ($isTanween
+                && $char === "\u{064B}"
+                && $nextIndex === $markEnd + 1
+                && in_array($chars[$nextIndex], ["\u{0627}", "\u{0649}"], true)) {
+                $nextIndex = $findNextArabicLetter($chars, $nextIndex + 1);
+
+                if ($nextIndex === null) {
+                    continue;
+                }
             }
 
             $nextLetter = $normalizeArabicLetter($chars[$nextIndex]);
@@ -210,8 +338,8 @@
 
     [$highlightedTranscription, $tajweedMatchCount] = $hasTranscription
         ? ($targetResults->isNotEmpty()
-            ? $highlightTargetResults($transcribedText, $targetResults)
-            : $highlightTajweed($transcribedText, $rule))
+            ? $highlightTargetResults($referenceText, $targetResults)
+            : $highlightTajweed($referenceText, $rule))
         : [null, 0];
 @endphp
 
@@ -224,11 +352,11 @@
         default => 'pending',
     };
 
-    $correctnessClass = $isUnrelated
-        ? 'unrelated'
-        : (($correctness === 'correct') ? 'correct' : (($correctness === 'incorrect') ? 'incorrect' : 'neutral'));
+    $correctnessClass = ($correctness === 'correct') ? 'correct' : (($correctness === 'incorrect') ? 'incorrect' : 'neutral');
 
-    $ruleLabel = $targetResults->isNotEmpty() ? 'Ikhfa & Izhar' : ($rule ? ucfirst($rule) : 'N/A');
+    // The persisted audio rule is the original practice-page choice. A combined
+    // ayah can contain both rules, so user-facing scope comes from actual targets.
+    $ruleLabel = $evaluatedRulesLabel;
 @endphp
 
 <style>
@@ -356,7 +484,6 @@
     .metric-icon.confidence { background: linear-gradient(135deg, #c29950, #a8792c); }
     .metric-icon.correct { background: linear-gradient(135deg, #16a34a, #15803d); }
     .metric-icon.incorrect { background: linear-gradient(135deg, #f59e0b, #d97706); }
-    .metric-icon.unrelated { background: linear-gradient(135deg, #dc2626, #b91c1c); }
     .metric-icon.neutral { background: linear-gradient(135deg, #64748b, #475569); }
 
     .metric-card span {
@@ -445,6 +572,12 @@
         box-shadow: inset 0 -0.2em 0 #ef4444;
     }
 
+    .tajweed-target-uncertain,
+    .tajweed-target-unknown {
+        background: #f1f5f9;
+        box-shadow: inset 0 -0.2em 0 #64748b;
+    }
+
     .tajweed-rule-ikhfa {
         outline: 1px solid rgba(37, 99, 235, 0.22);
     }
@@ -470,6 +603,35 @@
         border-radius: 6px;
         display: inline-block;
     }
+
+    .target-result-list {
+        display: grid;
+        gap: 0.65rem;
+        margin-top: 1rem;
+    }
+
+    .target-result-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 0.75rem 0.9rem;
+        color: #334155;
+        font-size: 0.9rem;
+        font-weight: 750;
+    }
+
+    .target-result-row strong {
+        white-space: nowrap;
+    }
+
+    .target-result-row .correct { color: #15803d; }
+    .target-result-row .incorrect { color: #b91c1c; }
+    .target-result-row .uncertain,
+    .target-result-row .unknown { color: #475569; }
 
     .info-note {
         background: #eff6ff;
@@ -772,7 +934,7 @@
                     <i class="fas fa-book-quran"></i>
                 </div>
                 <div>
-                    <span>Rule</span>
+                    <span>Rules evaluated</span>
                     <strong>{{ $ruleLabel }}</strong>
                 </div>
             </div>
@@ -792,16 +954,14 @@
                     <i class="fas fa-gauge-high"></i>
                 </div>
                 <div>
-                    <span>Confidence</span>
+                    <span>{{ $confidenceLabel }}</span>
                     <strong>{{ $confidencePercent }}%</strong>
                 </div>
             </div>
 
             <div class="metric-card">
                 <div class="metric-icon {{ $correctnessClass }}">
-                    @if($isUnrelated)
-                        <i class="fas fa-triangle-exclamation"></i>
-                    @elseif($correctness === 'correct')
+                    @if($correctness === 'correct')
                         <i class="fas fa-check"></i>
                     @elseif($correctness === 'incorrect')
                         <i class="fas fa-arrow-trend-up"></i>
@@ -811,7 +971,7 @@
                 </div>
                 <div>
                     <span>Correctness</span>
-                    <strong>{{ $isUnrelated ? 'Unrelated Audio' : ($correctness ? ucfirst($correctness) : 'N/A') }}</strong>
+                    <strong>{{ $correctnessLabel }}</strong>
                 </div>
             </div>
         </div>
@@ -820,13 +980,29 @@
             <div>
                 <div class="clean-card">
                     <span class="section-label">
-                        <i class="fas fa-language me-2"></i>Transcription
+                        <i class="fas fa-language me-2"></i>Reference / Transcription
                     </span>
-                    <h2>What the audio says</h2>
+                    <h2>Quran reference used for target detection</h2>
 
                     @if($hasTranscription)
                         <div class="transcription-box" dir="rtl" lang="ar">
                             {!! $highlightedTranscription !!}
+                        </div>
+
+                        <div class="info-note mt-3">
+                            <i class="fas fa-microphone-lines me-2"></i>
+                            <strong>User speech transcript:</strong>
+                            @if($hasSpeechTranscript)
+                                <span dir="rtl" lang="ar">{{ $speechTranscript }}</span>
+                                @if($speechTranscriptSource !== '')
+                                    <span class="ms-1">({{ ucfirst($speechTranscriptSource) }})</span>
+                                @endif
+                            @else
+                                <span>No separate speech transcript was captured clearly; the Quran reference above is still used for target detection.</span>
+                                @if($speechTranscriptNote !== '')
+                                    <span>{{ $speechTranscriptNote }}</span>
+                                @endif
+                            @endif
                         </div>
 
                         @if($tajweedMatchCount > 0)
@@ -836,6 +1012,10 @@
                                     <span>Correct target</span>
                                     <span class="legend-swatch tajweed-target-incorrect"></span>
                                     <span>Incorrect target</span>
+                                    @if($correctness === 'uncertain' && $targetResults->contains(fn($target) => data_get($target, 'status') === 'uncertain'))
+                                        <span class="legend-swatch tajweed-target-uncertain"></span>
+                                        <span>Not evaluated (silent or different ayah)</span>
+                                    @endif
                                     <span>{{ $tajweedMatchCount }} Ikhfa/Izhar {{ \Illuminate\Support\Str::plural('target', $tajweedMatchCount) }} highlighted.</span>
                                 @else
                                     <span class="legend-swatch tajweed-highlight-{{ $rule }}"></span>
@@ -845,10 +1025,52 @@
                                     </span>
                                 @endif
                             </div>
+
+                            @if($targetResults->isNotEmpty())
+                                <div class="target-result-list" aria-label="Per-target Tajweed results">
+                                    @foreach($targetResults as $targetIndex => $target)
+                                        @php
+                                            $targetStatus = strtolower((string) data_get($target, 'status', 'unknown'));
+                                             $targetStatusLabel = match($targetStatus) {
+                                                 'correct' => 'Correct',
+                                                 'incorrect' => 'Needs practice',
+                                                 'uncertain' => $correctness === 'uncertain' ? 'Not enough evidence' : 'Analysis unavailable',
+                                                 'analysis_failed' => 'Analysis failed',
+                                                 default => 'Not evaluated',
+                                             };
+                                            $targetConfidence = data_get($target, 'target_window_confidence');
+                                        @endphp
+                                        <div class="target-result-row">
+                                            <span>
+                                                {{ ucfirst((string) data_get($target, 'rule', 'Tajweed')) }} target {{ $targetIndex + 1 }}
+                                                @if(data_get($target, 'snippet'))
+                                                    — “{{ data_get($target, 'snippet') }}”
+                                                @endif
+                                            </span>
+                                            <strong class="{{ $targetStatus }}">
+                                                {{ $targetStatusLabel }}
+                                                @if(is_numeric($targetConfidence))
+                                                    ({{ round((float) $targetConfidence, 1) }}%)
+                                                @endif
+                                            </strong>
+                                        </div>
+                                    @endforeach
+                                </div>
+
+                                @if($correctness === 'uncertain')
+                                    <div class="info-note">
+                                        @if($classificationStatus === 'no_recitation')
+                                            No recitation was detected, so the Tajweed targets were not evaluated.
+                                        @else
+                                            The recitation did not match the selected ayah, so the Tajweed targets were not evaluated.
+                                        @endif
+                                    </div>
+                                @endif
+                            @endif
                         @else
                             <div class="info-note">
                                 <i class="fas fa-circle-info me-2"></i>
-                                No Ikhfa or Izhar trigger was detected in this transcription.
+                                No Ikhfa or Izhar trigger was detected in this reference text.
                             </div>
                         @endif
 
@@ -870,7 +1092,7 @@
                     <span class="section-label">
                         <i class="fas fa-comment-dots me-2"></i>Feedback
                     </span>
-                    <h2>AI Feedback</h2>
+                    <h2>Analysis Feedback</h2>
                     <p class="feedback-box">{{ $feedback }}</p>
                 </div>
 
@@ -915,7 +1137,7 @@
                                 </div>
 
                                 <div class="correction-field">
-                                    <label for="transcription_feedback">Was the transcript correct?</label>
+                                    <label for="transcription_feedback">Was the displayed Quran text correct?</label>
                                     <select id="transcription_feedback" name="transcription_feedback" class="form-select" required>
                                         <option value="">Choose one</option>
                                         @foreach(['correct' => 'Correct', 'incorrect' => 'Incorrect', 'unsure' => 'Not sure'] as $value => $label)
@@ -975,19 +1197,46 @@
                             <span>{{ ucfirst($status) }}</span>
                         </div>
                         <div>
-                            <strong>Rule</strong>
+                            <strong>Rules Evaluated</strong>
                             <span>{{ $ruleLabel }}</span>
                         </div>
+                        <div>
+                            <strong>Broad Model Pattern</strong>
+                            <span>{{ $predictedRuleLabel }}</span>
+                        </div>
+                        @if($classificationStatus !== '')
+                            <div>
+                                <strong>Classification Status</strong>
+                                <span>{{ ucfirst(str_replace('_', ' ', $classificationStatus)) }}</span>
+                            </div>
+                        @endif
+                        @if($classificationMethod !== '')
+                            <div>
+                                <strong>Decision Method</strong>
+                                <span>{{ ucfirst(str_replace('_', ' ', $classificationMethod)) }}</span>
+                            </div>
+                        @endif
+                        @foreach($classProbabilities as $label => $probability)
+                            <div>
+                                <strong>{{ ucfirst((string) $label) }} probability</strong>
+                                <span>{{ round(((float) $probability) * 100, 1) }}%</span>
+                            </div>
+                        @endforeach
                         <div>
                             <strong>Confidence</strong>
                             <span>{{ $confidencePercent }}%</span>
                         </div>
                         <div>
-                            <strong>Match Count</strong>
-                            <span>{{ $tajweedMatchCount }}</span>
+                            <strong>Targets Checked</strong>
+                            <span>
+                                {{ $tajweedMatchCount }}
+                                @if($evaluatedRuleCountSummary !== '')
+                                    ({{ $evaluatedRuleCountSummary }})
+                                @endif
+                            </span>
                         </div>
                         <div>
-                            <strong>Transcription</strong>
+                            <strong>Reference / Transcription</strong>
                             <span>{{ $hasTranscription ? 'Available' : 'Not available' }}</span>
                         </div>
                     </div>

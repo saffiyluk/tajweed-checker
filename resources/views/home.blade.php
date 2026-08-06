@@ -16,10 +16,14 @@
 
         $totalRecitations = (clone $recitationsQuery)->count();
         $correctRecitations = (clone $recitationsQuery)
-            ->whereHas('analysisResult', fn ($query) => $query->where('correctness', 'correct'))
+            ->whereHas('analysisResult', fn ($query) => $query
+                ->where('processing_status', 'completed')
+                ->where('correctness', 'correct'))
             ->count();
         $needsPractice = (clone $recitationsQuery)
-            ->whereHas('analysisResult', fn ($query) => $query->where('correctness', 'incorrect'))
+            ->whereHas('analysisResult', fn ($query) => $query
+                ->where('processing_status', 'completed')
+                ->where('correctness', 'incorrect'))
             ->count();
         $pendingAnalysis = (clone $recitationsQuery)
             ->where(function ($query) {
@@ -187,17 +191,22 @@
                             $result = $recitation->analysisResult;
                             $statusClass = 'pending';
                             $statusLabel = 'Pending';
+                            $outcomeKey = $result?->displayOutcomeKey();
 
-                            if ($result && $result->processing_status === 'completed') {
-                                $statusClass = $result->correctness === 'correct' ? 'correct' : 'improve';
-                                $statusLabel = $result->correctness === 'correct' ? 'Correct' : 'Needs practice';
-                            } elseif ($result && $result->processing_status === 'processing') {
-                                $statusClass = 'processing';
-                                $statusLabel = 'Processing';
+                            if ($result) {
+                                $statusClass = match ($outcomeKey) {
+                                    'incorrect' => 'improve',
+                                    'analysis_failed' => 'failed',
+                                    default => $outcomeKey,
+                                };
+                                $statusLabel = $result->displayOutcomeLabel();
                             }
+
+                            $hasViewableResult = $result
+                                && !in_array($outcomeKey, ['pending', 'processing'], true);
                         @endphp
 
-                        <a href="{{ $result && $result->processing_status === 'completed' ? route('tajweed.result', $recitation->id) : route('tajweed.history') }}" class="recent-row">
+                        <a href="{{ $hasViewableResult ? route('tajweed.result', $recitation->id) : route('tajweed.history') }}" class="recent-row">
                             <div>
                                 <strong>{{ $recitation->tajweed_rule === 'ikhfa' ? 'Ikhfa Haqiqi' : 'Izhar Halqi' }}</strong>
                                 <span>{{ $recitation->created_at->format('M d, Y') }}</span>
@@ -615,6 +624,21 @@
     .status-pill.improve {
         background: rgba(183, 121, 31, 0.14);
         color: var(--home-amber);
+    }
+
+    .status-pill.uncertain {
+        background: rgba(100, 116, 139, 0.14);
+        color: #475569;
+    }
+
+    .status-pill.failed {
+        background: rgba(185, 28, 28, 0.10);
+        color: #b91c1c;
+    }
+
+    .status-pill.unavailable {
+        background: rgba(100, 116, 139, 0.10);
+        color: #64748b;
     }
 
     .status-pill.processing,

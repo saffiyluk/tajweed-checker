@@ -608,22 +608,6 @@
                 </li>
 
                 <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('admin.datasets.*') ? 'active' : '' }}" 
-                       href="{{ route('admin.datasets.index') }}">
-                        <i class="fas fa-database"></i>
-                        <span>Datasets & Model</span>
-                    </a>
-                </li>
-
-                <li class="nav-item">
-                    <a class="nav-link {{ request()->routeIs('admin.evaluation') ? 'active' : '' }}" 
-                       href="{{ route('admin.evaluation') }}">
-                        <i class="fas fa-chart-bar"></i>
-                        <span>ML Evaluation</span>
-                    </a>
-                </li>
-
-                <li class="nav-item">
                     <a class="nav-link {{ request()->routeIs('admin.corrections.*') ? 'active' : '' }}" 
                        href="{{ route('admin.corrections.index') }}">
                         <i class="fas fa-clipboard-check"></i>

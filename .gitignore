@@ -37,6 +37,9 @@ python/venv/
 python/Dataset/
 python/dataset/
 
+# Downloaded Quran pronunciation model (about 2.4 GB)
+python/models/muaalem-model-v3_2/
+
 # Logs / local files
 storage/logs/*.log
 .envphoto_2026-06-28_03-51-44-transparent.png

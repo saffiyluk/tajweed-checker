@@ -78,13 +78,23 @@
                                 <small>{{ $recitation->original_filename }}</small>
                             </td>
                             <td>
-                                @php($analysis = $recitation->analysisResult)
+                                @php
+                                    $analysis = $recitation->analysisResult;
+                                    $outcomeKey = $analysis?->displayOutcomeKey();
+                                @endphp
                                 @if($analysis)
-                                    @if($analysis->processing_status == 'completed')
-                                        <span class="badge {{ $analysis->correctness === 'correct' ? 'bg-success' : 'bg-danger' }}">
-                                            {{ ucfirst($analysis->correctness ?? 'unknown') }}
+                                    @if(in_array($outcomeKey, ['correct', 'incorrect', 'uncertain'], true))
+                                        @php
+                                            $correctnessBadge = match ($outcomeKey) {
+                                                'correct' => 'bg-success',
+                                                'incorrect' => 'bg-danger',
+                                                'uncertain' => 'bg-secondary',
+                                            };
+                                        @endphp
+                                        <span class="badge {{ $correctnessBadge }}">
+                                            {{ $analysis->displayOutcomeLabel() }}
                                             @if(!is_null($analysis->confidence_score))
-                                                ({{ round($analysis->confidence_score) }}%)
+                                                (rule {{ round($analysis->confidence_score) }}%)
                                             @endif
                                         </span>
                                         @if($analysis->correction_submitted_at)
@@ -93,8 +103,14 @@
                                                 Correction: {{ ucfirst($analysis->correction_review_status ?? 'pending') }}
                                             </a>
                                         @endif
+                                    @elseif($outcomeKey === 'analysis_failed')
+                                        <span class="badge bg-danger">Analysis Failed</span>
+                                    @elseif($outcomeKey === 'processing')
+                                        <span class="badge bg-info">Processing</span>
+                                    @elseif($outcomeKey === 'pending')
+                                        <span class="badge bg-warning text-dark">Pending</span>
                                     @else
-                                        <span class="badge bg-secondary">{{ ucfirst($analysis->processing_status) }}</span>
+                                        <span class="badge bg-secondary">Unavailable</span>
                                     @endif
                                 @else
                                     <span class="badge bg-secondary">No Analysis</span>

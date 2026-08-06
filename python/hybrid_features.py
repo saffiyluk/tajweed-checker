@@ -130,6 +130,7 @@ def band_energy_features(power, frequencies):
     return np.array(features, dtype=np.float32)
 
 
+# ===== REPORT SCREENSHOT START: Section 4.3.6 - Audio Feature Extraction =====
 def extract_summary_features(file_path):
     y = fixed_length_audio(file_path)
     frames = frame_audio(y)
@@ -157,3 +158,4 @@ def extract_summary_features(file_path):
     )
 
     return np.nan_to_num(features.astype(np.float32))
+# ===== REPORT SCREENSHOT END: Section 4.3.6 - Audio Feature Extraction =====

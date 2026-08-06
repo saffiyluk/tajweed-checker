@@ -78,6 +78,14 @@
             </div>
         @endif
 
+        @if($errors->any())
+            <div class="alert alert-danger alert-dismissible fade show clean-alert">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                {{ $errors->first() }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        @endif
+
         <div class="row g-4 align-items-start">
             <div class="col-lg-5">
                 <div class="clean-card sticky-lg-top practice-guide-card">
@@ -112,7 +120,7 @@
                     @else
                         <h2>No ayah selected</h2>
                         <p class="muted-text">
-                            You can still upload or record your recitation, but selecting an ayah first gives better context for analysis.
+                            Select the ayah you want to read first so the analysis can compare your recitation against the correct reference text.
                         </p>
 
                         <a href="{{ route('recite.quran') }}" class="btn btn-primary-custom w-100">
@@ -145,56 +153,19 @@
                                 <i class="fas fa-microphone me-2"></i>
                                 Practice Submission
                             </span>
-                            <h2>Upload or record your recitation</h2>
+                            <h2>Record your recitation</h2>
                         </div>
                     </div>
 
-                    <ul class="clean-tabs nav nav-pills mb-4" id="myTab" role="tablist">
-                        <li class="nav-item flex-fill" role="presentation">
-                            <button class="nav-link active w-100" id="upload-tab-izhar" data-bs-toggle="tab" data-bs-target="#upload-izhar" type="button">
-                                <i class="fas fa-cloud-upload-alt me-2"></i>Upload File
-                            </button>
-                        </li>
-                        <li class="nav-item flex-fill" role="presentation">
-                            <button class="nav-link w-100" id="record-tab-izhar" data-bs-toggle="tab" data-bs-target="#record-izhar" type="button">
-                                <i class="fas fa-microphone me-2"></i>Record Audio
-                            </button>
-                        </li>
-                    </ul>
-
                     <div class="tab-content">
-                        <div class="tab-pane fade show active" id="upload-izhar" role="tabpanel">
-                            <form id="uploadFormIzhar" method="POST" action="{{ route('tajweed.upload') }}" enctype="multipart/form-data">
-                                @csrf
-                                <input type="hidden" name="tajweed_rule" value="izhar">
-                                <input type="hidden" name="browser_transcript" id="browserTranscriptIzhar" value="">
+                        @unless($selectedAyah)
+                            <div class="alert alert-warning clean-alert">
+                                <i class="fas fa-book-quran me-2"></i>
+                                Select an ayah first before submitting an Izhar recording for analysis.
+                            </div>
+                        @endunless
 
-                                @if($selectedAyah)
-                                    <input type="hidden" name="selected_ayah" value="{{ $selectedAyah }}">
-                                @endif
-
-                                <label for="audioFileIzhar" class="upload-zone">
-                                    <div class="upload-icon">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                    </div>
-
-                                    <div>
-                                        <h5>Choose your audio file</h5>
-                                        <p>MP3, WAV, or WEBM. Maximum 10MB.</p>
-                                    </div>
-
-                                    <input type="file" name="audio" accept="audio/*" class="d-none" required id="audioFileIzhar">
-                                </label>
-
-                                <div id="fileNameIzhar" class="file-name"></div>
-
-                                <button type="submit" class="btn btn-primary-custom w-100 mt-3" id="submitUploadIzhar">
-                                    <i class="fas fa-paper-plane me-2"></i>Submit for Analysis
-                                </button>
-                            </form>
-                        </div>
-
-                        <div class="tab-pane fade" id="record-izhar" role="tabpanel">
+                        <div class="tab-pane fade show active" id="record-izhar" role="tabpanel">
                             <div class="record-panel">
                                 <div class="timer-card">
                                     <span id="timerIzhar" class="timer">00:00</span>
@@ -206,7 +177,7 @@
                                 </div>
 
                                 <div class="record-actions">
-                                    <button type="button" class="btn btn-record-start" id="startBtnIzhar">
+                                    <button type="button" class="btn btn-record-start" id="startBtnIzhar" @disabled(!$selectedAyah)>
                                         <i class="fas fa-microphone me-2"></i>Start
                                     </button>
 
@@ -1146,17 +1117,6 @@
             icon.className = 'fas fa-play';
         }
     }
-    
-    // File upload preview for Izhar
-    document.getElementById('audioFileIzhar')?.addEventListener('change', function(e) {
-        const fileName = document.getElementById('fileNameIzhar');
-        if (this.files.length > 0) {
-            fileName.textContent = `Selected: ${this.files[0].name}`;
-        } else {
-            fileName.textContent = '';
-        }
-    });
-    
     // Recording functionality for Izhar
     document.addEventListener('DOMContentLoaded', function() {
         const startBtn = document.getElementById('startBtnIzhar');
@@ -1170,6 +1130,7 @@
         const submitRecording = document.getElementById('submitRecordingIzhar');
         const canvas = document.getElementById('waveformIzhar');
         const ctx = canvas?.getContext('2d');
+        const hasSelectedAyah = @json((bool) $selectedAyah);
         
         let mediaRecorder;
         let audioChunks = [];
@@ -1314,6 +1275,11 @@
         
         // Start recording
         startBtn?.addEventListener('click', async function() {
+            if (!hasSelectedAyah) {
+                alert('Please select an ayah from the Quran page before recording.');
+                return;
+            }
+
             try {
                 // Request microphone access
                 audioStream = await navigator.mediaDevices.getUserMedia({ 
@@ -1501,6 +1467,11 @@
         
         // Submit recording - FIXED for Izhar
         submitRecording?.addEventListener('click', function() {
+            if (!hasSelectedAyah) {
+                alert('Please select an ayah from the Quran page before submitting.');
+                return;
+            }
+
             if (audioChunks.length === 0) {
                 alert('No recording to submit. Please record first.');
                 return;
@@ -1555,6 +1526,20 @@
                     selectedAyahInput.value = @json($selectedAyah);
                     form.appendChild(selectedAyahInput);
                 @endif
+
+                @if($sourceSurah && $sourceAyah)
+                    const sourceSurahInput = document.createElement('input');
+                    sourceSurahInput.type = 'hidden';
+                    sourceSurahInput.name = 'source_surah';
+                    sourceSurahInput.value = @json((int) $sourceSurah);
+                    form.appendChild(sourceSurahInput);
+
+                    const sourceAyahInput = document.createElement('input');
+                    sourceAyahInput.type = 'hidden';
+                    sourceAyahInput.name = 'source_ayah';
+                    sourceAyahInput.value = @json((int) $sourceAyah);
+                    form.appendChild(sourceAyahInput);
+                @endif
                 
                 // Add audio as base64
                 const audioInput = document.createElement('input');
@@ -1573,15 +1558,6 @@
                 submitRecording.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Submit Recording';
                 alert('Could not prepare the recording. Please try recording again.');
             };
-        });
-        
-        // Handle form submission for Izhar upload
-        document.getElementById('uploadFormIzhar')?.addEventListener('submit', function(e) {
-            const submitBtn = document.getElementById('submitUploadIzhar');
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
-            }
         });
     });
 </script>

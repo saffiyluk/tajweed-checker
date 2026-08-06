@@ -31,9 +31,9 @@ Route::get('/home', [App\Http\Controllers\HomeController::class, 'index'])->name
 Route::middleware('auth')->group(function () {
     Route::get('/profile/{user}', [ProfileController::class, 'show'])->name('profile.show');
     Route::get('/profile/{user}/edit', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::post('/profile/{id}/audio', [ProfileController::class, 'updateAudio'])->name('profile.audio');
-    Route::put('/profile/{id}', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile/{id}', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::post('/profile/{user}/audio', [ProfileController::class, 'updateAudio'])->name('profile.audio');
+    Route::put('/profile/{user}', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile/{user}', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
 if (app()->environment('local')) {
@@ -113,7 +113,8 @@ Route::get('/tajweed/audio-url/{audioRecitation}', [TajweedController::class, 'g
 
 Route::get('/tajweed/play/{audioRecitation}', [TajweedController::class, 'playAudio'])->name('tajweed.play-audio');
 
-Route::get('/pdf/report/{userId}', [PDFController::class, 'generateReport'])->name('report.generate');
+Route::middleware('auth')->get('/pdf/report/{user}', [PDFController::class, 'generateReport'])
+    ->name('report.generate');
 
 // Admin Routes
 Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
@@ -136,12 +137,6 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/corrections', [AdminController::class, 'corrections'])->name('corrections.index');
     Route::patch('/corrections/{analysisResult}', [AdminController::class, 'updateCorrection'])->name('corrections.update');
 
-    // Dataset and Model Management
-    Route::get('/datasets', [AdminController::class, 'datasets'])->name('datasets.index');
-    Route::post('/datasets', [AdminController::class, 'uploadDataset'])->name('datasets.upload');
-    Route::post('/model/retrain', [AdminController::class, 'retrainModel'])->name('model.retrain');
-    Route::get('/evaluation', [AdminController::class, 'evaluation'])->name('evaluation');
-
     // System Monitoring
     Route::get('/monitoring', [AdminController::class, 'monitoring'])->name('monitoring');
 
@@ -153,8 +148,10 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
 });
 
 // Quran routes
-Route::get('/quran', [QuranController::class, 'surahList'])->name('quran.list');
-Route::get('/quran/{id}', [QuranController::class, 'surah'])->name('quran.surah');
+Route::get('/quran', [QuranController::class, 'showSurah'])->name('quran.list');
+Route::get('/quran/{surah}', [QuranController::class, 'showSurah'])
+    ->where('surah', '[0-9]+')
+    ->name('quran.surah');
 
 // Recite Quran page (optional surah, default = 1)
 Route::get('/recite-quran/{surah?}', [QuranController::class, 'showSurah'])
@@ -163,6 +160,7 @@ Route::get('/recite-quran/{surah?}', [QuranController::class, 'showSurah'])
 
 // Quran memorization page (optional surah, default = 1)
 Route::post('/memorize-quran/transcribe', [QuranController::class, 'transcribeMemorization'])
+    ->middleware(['auth', 'throttle:10,1'])
     ->name('memorize.transcribe');
 
 Route::get('/memorize-quran/{surah?}', [QuranController::class, 'memorizeSurah'])

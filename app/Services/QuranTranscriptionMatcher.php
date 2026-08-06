@@ -11,6 +11,7 @@ class QuranTranscriptionMatcher
 {
     private const CACHE_PATH = 'app/quran/ayahs.json';
 
+    // ===== REPORT SCREENSHOT START: Section 4.3.12 - Quran Transcription Matching =====
     public function match(?string $rawText): ?array
     {
         $normalizedInput = $this->normalizeArabic((string) $rawText);
@@ -54,6 +55,7 @@ class QuranTranscriptionMatcher
             'margin' => round($margin, 2),
         ];
     }
+    // ===== REPORT SCREENSHOT END: Section 4.3.12 - Quran Transcription Matching =====
 
     public function warmCache(): int
     {
@@ -130,16 +132,16 @@ class QuranTranscriptionMatcher
     private function normalizeArabic(string $text): string
     {
         $text = preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{06D6}-\x{06ED}]/u', '', $text) ?? $text;
-        $text = str_replace(['ـ', 'ٰ'], '', $text);
+        $text = str_replace(["\u{0640}", "\u{0670}"], "", $text);
         $text = strtr($text, [
-            'أ' => 'ا',
-            'إ' => 'ا',
-            'آ' => 'ا',
-            'ٱ' => 'ا',
-            'ؤ' => 'ء',
-            'ئ' => 'ء',
-            'ى' => 'ي',
-            'ة' => 'ه',
+            "\u{0623}" => "\u{0627}",
+            "\u{0625}" => "\u{0627}",
+            "\u{0622}" => "\u{0627}",
+            "\u{0671}" => "\u{0627}",
+            "\u{0624}" => "\u{0621}",
+            "\u{0626}" => "\u{0621}",
+            "\u{0649}" => "\u{064A}",
+            "\u{0629}" => "\u{0647}",
         ]);
         $text = preg_replace('/[^\x{0621}-\x{064A}\s]/u', ' ', $text) ?? $text;
         $text = preg_replace('/\s+/u', ' ', $text) ?? $text;

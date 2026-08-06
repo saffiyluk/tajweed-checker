@@ -61,11 +61,25 @@ MODEL_PATH = os.path.join(BASE_DIR, "tajweed_model.keras")
 FEATURE_MODEL_PATH = os.path.join(BASE_DIR, "feature_model.pkl")
 LABEL_ENCODER_PATH = os.path.join(BASE_DIR, "label_encoder.pkl")
 CLASSES = ["ikhfa", "izhar"]
-LOW_CONFIDENCE_THRESHOLD = 0.55
-AMBIGUOUS_MARGIN_THRESHOLD = 0.10
+LOW_CONFIDENCE_THRESHOLD = float(os.environ.get("TAJWEED_LOW_CONFIDENCE_THRESHOLD", "0.60"))
+AMBIGUOUS_MARGIN_THRESHOLD = float(os.environ.get("TAJWEED_AMBIGUOUS_MARGIN_THRESHOLD", "0.15"))
 CNN_WEIGHT = float(os.environ.get("TAJWEED_CNN_WEIGHT", "0.6"))
-OTHER_GATE_THRESHOLD = float(os.environ.get("TAJWEED_OTHER_GATE_THRESHOLD", "0.65"))
-CNN_STRONG_THRESHOLD = float(os.environ.get("TAJWEED_CNN_STRONG_THRESHOLD", "0.85"))
+OTHER_GATE_THRESHOLD = float(os.environ.get("TAJWEED_OTHER_GATE_THRESHOLD", "0.70"))
+CNN_STRONG_THRESHOLD = float(os.environ.get("TAJWEED_CNN_STRONG_THRESHOLD", "0.88"))
+IKHFA_CNN_ONLY_THRESHOLD = float(os.environ.get("TAJWEED_IKHFA_CNN_ONLY_THRESHOLD", "0.78"))
+RULE_CNN_ONLY_THRESHOLD = float(os.environ.get("TAJWEED_RULE_CNN_ONLY_THRESHOLD", "0.72"))
+CNN_PRIORITY_MARGIN_THRESHOLD = float(os.environ.get("TAJWEED_CNN_PRIORITY_MARGIN_THRESHOLD", "0.18"))
+
+# Audio-input quality gate. These thresholds are intentionally conservative:
+# they catch silence/near-silence before the ML model turns empty audio into a
+# false Ikhfa/Izhar prediction.
+SILENT_RMS_THRESHOLD = float(os.environ.get("TAJWEED_SILENT_RMS_THRESHOLD", "0.003"))
+SILENT_PEAK_THRESHOLD = float(os.environ.get("TAJWEED_SILENT_PEAK_THRESHOLD", "0.015"))
+SILENT_ACTIVE_RATIO_THRESHOLD = float(os.environ.get("TAJWEED_SILENT_ACTIVE_RATIO_THRESHOLD", "0.025"))
+QUIET_RMS_THRESHOLD = float(os.environ.get("TAJWEED_QUIET_RMS_THRESHOLD", "0.006"))
+QUIET_PEAK_THRESHOLD = float(os.environ.get("TAJWEED_QUIET_PEAK_THRESHOLD", "0.035"))
+QUIET_ACTIVE_RATIO_THRESHOLD = float(os.environ.get("TAJWEED_QUIET_ACTIVE_RATIO_THRESHOLD", "0.055"))
+MIN_AUDIO_DURATION_SECONDS = float(os.environ.get("TAJWEED_MIN_AUDIO_DURATION_SECONDS", "0.75"))
 
 
 def load_classes(output_size):
@@ -175,6 +189,7 @@ def resample_audio(y, original_rate, target_rate):
     return np.interp(target_positions, source_positions, y).astype(np.float32)
 
 
+# ===== REPORT SCREENSHOT START: Section 4.3.5 - Audio Pre-processing =====
 def preprocess(file_path):
     y = load_audio(file_path, sample_rate=SAMPLE_RATE)
     y = clean_recitation_audio(y, sample_rate=SAMPLE_RATE)
@@ -197,6 +212,7 @@ def preprocess(file_path):
     mel = mel[..., np.newaxis]
     mel = np.expand_dims(mel, axis=0)
     return mel
+# ===== REPORT SCREENSHOT END: Section 4.3.5 - Audio Pre-processing =====
 
 
 def frame_audio(y, frame_length, hop_length):
@@ -213,9 +229,110 @@ def frame_audio(y, frame_length, hop_length):
     return frames
 
 
+def estimate_audio_activity(y, frame_length=512, hop_length=160):
+    """Return raw activity features before normalization/denoising.
+
+    This gate is used to reject silent or near-silent recordings. Without it,
+    CNN/feature models may still output a tajweed label for empty audio.
+    """
+
+    y = np.asarray(y, dtype=np.float32)
+
+    if y.size == 0:
+        return {
+            "raw_duration_ms": 0.0,
+            "raw_rms": 0.0,
+            "raw_peak_amplitude": 0.0,
+            "raw_active_frame_ratio": 0.0,
+            "raw_voiced_frame_ratio": 0.0,
+            "audio_activity_status": "silent",
+            "audio_activity_reason": "Audio contains no samples.",
+            "is_silent": True,
+            "is_too_quiet": True,
+            "is_too_short": True,
+            "minimum_duration_ms": round(MIN_AUDIO_DURATION_SECONDS * 1000.0, 2),
+        }
+
+    frames = frame_audio(y, frame_length, hop_length)
+    frame_rms = np.sqrt(np.mean(frames ** 2, axis=1) + 1e-10)
+    raw_rms = float(np.sqrt(np.mean(y ** 2) + 1e-10))
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    noise_floor = float(np.percentile(frame_rms, 20)) if frame_rms.size else 0.0
+    upper_activity_level = float(np.percentile(frame_rms, 90)) if frame_rms.size else noise_floor
+    activity_dynamic_range = max(0.0, upper_activity_level - noise_floor)
+
+    # A multiple of the 20th-percentile RMS is not a valid activity threshold
+    # when a clip contains speech almost continuously. In that case the old
+    # noise_floor * 3 rule could be greater than every frame and report 0%
+    # activity for a loud, valid recitation. Interpolating inside the observed
+    # frame-RMS range remains adaptive while keeping an absolute quiet floor.
+    active_threshold = max(0.006, noise_floor + (activity_dynamic_range * 0.35))
+    voiced_threshold = max(0.004, noise_floor + (activity_dynamic_range * 0.10))
+    active_ratio = float(np.mean(frame_rms > active_threshold)) if frame_rms.size else 0.0
+    voiced_ratio = float(np.mean(frame_rms > voiced_threshold)) if frame_rms.size else 0.0
+    duration_seconds = y.size / float(SAMPLE_RATE)
+
+    has_silent_level = raw_rms < SILENT_RMS_THRESHOLD or peak < SILENT_PEAK_THRESHOLD
+    has_quiet_level = raw_rms < QUIET_RMS_THRESHOLD or peak < QUIET_PEAK_THRESHOLD
+    is_silent = has_silent_level and active_ratio < SILENT_ACTIVE_RATIO_THRESHOLD
+    is_too_quiet = is_silent or (has_quiet_level and active_ratio < QUIET_ACTIVE_RATIO_THRESHOLD)
+    is_too_short = duration_seconds < MIN_AUDIO_DURATION_SECONDS
+
+    if is_too_short:
+        status = "too_short"
+        reason = (
+            f"Audio is too short for reliable tajweed validation; record at least "
+            f"{MIN_AUDIO_DURATION_SECONDS:.2f} seconds."
+        )
+    elif is_silent:
+        status = "silent"
+        reason = "Audio is silent or has too little usable voice signal."
+    elif is_too_quiet:
+        status = "too_quiet"
+        reason = "Audio is too quiet or unclear for reliable tajweed validation."
+    else:
+        status = "usable"
+        reason = "Audio has enough signal for analysis."
+
+    return {
+        "raw_duration_ms": round(float(y.size / SAMPLE_RATE * 1000.0), 2),
+        "raw_rms": round(raw_rms, 6),
+        "raw_peak_amplitude": round(peak, 6),
+        "raw_active_frame_ratio": round(active_ratio, 4),
+        "raw_voiced_frame_ratio": round(voiced_ratio, 4),
+        "audio_activity_status": status,
+        "audio_activity_reason": reason,
+        "is_silent": bool(is_silent),
+        "is_too_quiet": bool(is_too_quiet),
+        "is_too_short": bool(is_too_short),
+        "minimum_duration_ms": round(MIN_AUDIO_DURATION_SECONDS * 1000.0, 2),
+        "audio_activity_thresholds": {
+            "active_rms": round(float(active_threshold), 6),
+            "voiced_rms": round(float(voiced_threshold), 6),
+            "noise_floor_rms": round(float(noise_floor), 6),
+            "upper_activity_rms": round(float(upper_activity_level), 6),
+            "silent_rms": SILENT_RMS_THRESHOLD,
+            "silent_peak": SILENT_PEAK_THRESHOLD,
+            "silent_active_ratio": SILENT_ACTIVE_RATIO_THRESHOLD,
+            "quiet_rms": QUIET_RMS_THRESHOLD,
+            "quiet_peak": QUIET_PEAK_THRESHOLD,
+            "quiet_active_ratio": QUIET_ACTIVE_RATIO_THRESHOLD,
+        },
+    }
+
+
+def audio_is_unusable(quality):
+    return bool(
+        quality.get("is_silent")
+        or quality.get("is_too_quiet")
+        or quality.get("is_too_short")
+    )
+
+
 def estimate_ghunnah_features(file_path):
-    y = load_audio(file_path, sample_rate=SAMPLE_RATE)
-    y = clean_recitation_audio(y, sample_rate=SAMPLE_RATE)
+    raw_y = load_audio(file_path, sample_rate=SAMPLE_RATE)
+    activity = estimate_audio_activity(raw_y)
+    y = clean_recitation_audio(raw_y, sample_rate=SAMPLE_RATE)
 
     frame_length = 512
     hop_length = 160
@@ -225,18 +342,39 @@ def estimate_ghunnah_features(file_path):
     frequencies = np.fft.rfftfreq(frame_length, d=1.0 / SAMPLE_RATE)
 
     total_power = np.sum(spectrum, axis=1) + 1e-8
+    normalized_spectrum = spectrum / total_power[:, None]
+    spectral_flux = 0.0
+
+    if normalized_spectrum.shape[0] > 1:
+        spectral_flux = float(np.mean(np.sqrt(np.sum(np.diff(normalized_spectrum, axis=0) ** 2, axis=1))))
+
     nasal_band = np.sum(spectrum[:, (frequencies >= 220) & (frequencies < 950)], axis=1) / total_power
+    formant_band = np.sum(spectrum[:, (frequencies >= 950) & (frequencies < 2400)], axis=1) / total_power
     fricative_band = np.sum(spectrum[:, (frequencies >= 2500) & (frequencies < 7500)], axis=1) / total_power
     frame_rms = np.sqrt(np.mean(frames ** 2, axis=1) + 1e-8)
     zero_crossing_rate = np.mean(np.diff(np.signbit(frames), axis=1), axis=1)
-    voiced_threshold = max(0.015, float(np.percentile(frame_rms, 60)) * 0.65)
+    voiced_threshold = max(0.0045, float(np.percentile(frame_rms, 50)) * 0.38)
+    voiced_frames = frame_rms > voiced_threshold
+    nasal_score = nasal_band - (fricative_band * 0.35) - (zero_crossing_rate * 0.25)
 
-    nasal_frames = (
-        (frame_rms > voiced_threshold)
-        & (nasal_band > 0.28)
-        & (fricative_band < 0.42)
-        & (zero_crossing_rate < 0.16)
+    if np.any(voiced_frames):
+        score_threshold = max(0.10, float(np.percentile(nasal_score[voiced_frames], 55)))
+    else:
+        score_threshold = 0.10
+
+    nasal_candidates = (
+        voiced_frames
+        & (nasal_band > 0.18)
+        & (nasal_score >= score_threshold)
+        & (fricative_band < 0.62)
+        & (zero_crossing_rate < 0.30)
     )
+
+    if nasal_candidates.size >= 5:
+        smoothed = np.convolve(nasal_candidates.astype(np.int16), np.ones(5, dtype=np.int16), mode="same")
+        nasal_frames = smoothed >= 2
+    else:
+        nasal_frames = nasal_candidates
 
     longest_run = 0
     current_run = 0
@@ -275,13 +413,34 @@ def estimate_ghunnah_features(file_path):
     ghunnah_duration_ms = longest_run * hop_length / SAMPLE_RATE * 1000.0
     ghunnah_frame_ratio = float(np.mean(nasal_frames)) if nasal_frames.size else 0.0
     ghunnah_strength = float(np.mean(nasal_band[nasal_frames])) if np.any(nasal_frames) else 0.0
+    voiced_rms = frame_rms[voiced_frames]
+    rms_stability = 0.0
+
+    if voiced_rms.size:
+        rms_stability = 1.0 - min(1.0, float(np.std(voiced_rms) / (np.mean(voiced_rms) + 1e-8)))
+
+    formant_transition_score = 0.0
+
+    if formant_band.size > 1:
+        formant_transition_score = float(np.mean(np.abs(np.diff(formant_band))))
+
+    transition_smoothness = max(0.0, min(1.0, (1.0 - min(1.0, spectral_flux * 4.0)) * 0.65 + rms_stability * 0.35))
 
     return {
+        **activity,
         "duration_ms": round(float(y.size / SAMPLE_RATE * 1000.0), 2),
         "ghunnah_duration_ms": round(float(ghunnah_duration_ms), 2),
         "ghunnah_frame_ratio": round(ghunnah_frame_ratio, 4),
         "ghunnah_strength": round(ghunnah_strength, 4),
+        "spectral_flux": round(float(spectral_flux), 5),
+        "rms_stability": round(float(rms_stability), 4),
+        "transition_smoothness": round(float(transition_smoothness), 4),
+        "formant_transition_score": round(float(formant_transition_score), 5),
         "ghunnah_segments": segments,
+        "ghunnah_thresholds": {
+            "voiced_rms": round(float(voiced_threshold), 5),
+            "nasal_score": round(float(score_threshold), 5),
+        },
     }
 
 
@@ -302,6 +461,7 @@ def normalize_probabilities(probabilities):
     return (probabilities / total).astype(np.float32)
 
 
+# ===== REPORT SCREENSHOT START: Section 4.3.8 - Confidence Score Interpretation =====
 def classify_probabilities(probabilities, classes):
     probabilities = normalize_probabilities(np.array(probabilities, dtype=np.float32))
     index = int(np.argmax(probabilities))
@@ -332,6 +492,7 @@ def classify_probabilities(probabilities, classes):
         "other_confidence": float(probabilities[classes.index("other")]) if "other" in classes else None,
         "status": status,
     }
+# ===== REPORT SCREENSHOT END: Section 4.3.8 - Confidence Score Interpretation =====
 
 
 def predict_cnn(file_path):
@@ -375,12 +536,17 @@ def combine_predictions(cnn_result, feature_result):
         result["method"] = "cnn_only"
         return result
 
-    cnn_has_other = "other" in cnn_result["probabilities"]
+    # Run the independent summary-feature rejection gate before allowing a CNN
+    # rule-priority shortcut. This branch used to require the CNN to have no
+    # `other` class, which made it unreachable for the current three-class CNN.
+    # A strong Random Forest `other` result now rejects a merely moderate CNN
+    # rule result; a genuinely strong CNN result can still proceed.
     feature_says_other = feature_result["raw_prediction"] == "other"
+    cnn_says_rule = cnn_result["raw_prediction"] in {"ikhfa", "izhar"}
 
     if (
         feature_says_other
-        and not cnn_has_other
+        and cnn_says_rule
         and feature_result["confidence"] >= OTHER_GATE_THRESHOLD
         and cnn_result["confidence"] < CNN_STRONG_THRESHOLD
     ):
@@ -390,8 +556,41 @@ def combine_predictions(cnn_result, feature_result):
             "cnn": 0.0,
             "feature_model": 1.0,
         }
+        result["reason"] = (
+            "Summary-feature model strongly rejected the recording as Other while "
+            "the CNN rule result was below the strong-confidence threshold."
+        )
         return result
 
+    if (
+        cnn_result["raw_prediction"] in {"ikhfa", "izhar"}
+        and cnn_result["confidence"] >= RULE_CNN_ONLY_THRESHOLD
+        and cnn_result.get("margin", 0.0) >= CNN_PRIORITY_MARGIN_THRESHOLD
+    ):
+        result = dict(cnn_result)
+        result["method"] = "cnn_rule_priority"
+        result["weights"] = {
+            "cnn": 1.0,
+            "feature_model": 0.0,
+        }
+        result["reason"] = "CNN detected the selected Tajweed rule clearly; summary feature model is ignored for rule decision stability."
+        return result
+
+    if (
+        cnn_result["raw_prediction"] == "ikhfa"
+        and cnn_result["confidence"] >= IKHFA_CNN_ONLY_THRESHOLD
+        and cnn_result.get("margin", 0.0) >= CNN_PRIORITY_MARGIN_THRESHOLD
+    ):
+        result = dict(cnn_result)
+        result["method"] = "cnn_ikhfa_priority"
+        result["weights"] = {
+            "cnn": 1.0,
+            "feature_model": 0.0,
+        }
+        result["reason"] = "CNN detected Ikhfa clearly; summary feature model is ignored for this local nasal event."
+        return result
+
+    # ===== REPORT SCREENSHOT START: Section 4.3.7 - Hybrid Rule-Pattern Classification =====
     classes = sorted(set(cnn_result["probabilities"].keys()) | set(feature_result["probabilities"].keys()))
     cnn_probs = aligned_probabilities(cnn_result["probabilities"], classes)
     feature_probs = aligned_probabilities(feature_result["probabilities"], classes)
@@ -408,6 +607,7 @@ def combine_predictions(cnn_result, feature_result):
     }
     result["model_path"] = MODEL_PATH
     return result
+    # ===== REPORT SCREENSHOT END: Section 4.3.7 - Hybrid Rule-Pattern Classification =====
 
 
 def main():
@@ -415,13 +615,35 @@ def main():
         raise ValueError("Audio file path is required.")
 
     file_path = sys.argv[1]
+    quality = estimate_ghunnah_features(file_path)
+
+    if audio_is_unusable(quality):
+        result = {
+            "prediction": "other",
+            "raw_prediction": "other",
+            "confidence": 0.0,
+            "margin": 0.0,
+            "probabilities": {},
+            "ikhfa_confidence": None,
+            "izhar_confidence": None,
+            "other_confidence": 1.0,
+            "status": "unrelated",
+            "method": "audio_quality_gate",
+            "reason": quality.get("audio_activity_reason", "Audio is not usable for Tajweed validation."),
+            "quality": quality,
+            "cnn": None,
+            "feature_model": None,
+        }
+        print(json.dumps(result))
+        return
+
     cnn_result = predict_cnn(file_path)
     feature_result = predict_feature_model(file_path)
     ensemble_result = combine_predictions(cnn_result, feature_result)
 
     result = {
         **ensemble_result,
-        "quality": estimate_ghunnah_features(file_path),
+        "quality": quality,
         "cnn": cnn_result,
         "feature_model": feature_result,
     }

@@ -6,8 +6,9 @@
 @php
     $items = $recitations->getCollection();
 
-    $correctCount = $items->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'correct')->count();
-    $incorrectCount = $items->filter(fn($r) => $r->analysisResult && $r->analysisResult->correctness === 'incorrect')->count();
+    $correctCount = $items->filter(fn($r) => $r->analysisResult?->displayOutcomeKey() === 'correct')->count();
+    $incorrectCount = $items->filter(fn($r) => $r->analysisResult?->displayOutcomeKey() === 'incorrect')->count();
+    $uncertainCount = $items->filter(fn($r) => $r->analysisResult?->displayOutcomeKey() === 'uncertain')->count();
     $pendingCount = $items->filter(fn($r) => !$r->analysisResult || in_array($r->analysisResult->processing_status, ['pending', 'processing']))->count();
 @endphp
 
@@ -154,7 +155,7 @@
 
     .stats-grid {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
         gap: 1rem;
         margin-bottom: 1.5rem;
     }
@@ -183,6 +184,7 @@
     .stat-icon.total { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
     .stat-icon.correct { background: linear-gradient(135deg, #16a34a, #15803d); }
     .stat-icon.improve { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .stat-icon.uncertain { background: linear-gradient(135deg, #64748b, #475569); }
     .stat-icon.pending { background: linear-gradient(135deg, #06b6d4, #0891b2); }
 
     .stat-card h3 {
@@ -409,6 +411,12 @@
         border: 1px solid #a5f3fc;
     }
 
+    .rule-badge.combined {
+        background: #f5f3ff;
+        color: #6d28d9;
+        border: 1px solid #ddd6fe;
+    }
+
     .duration-badge {
         background: #f8fafc;
         color: #64748b;
@@ -427,6 +435,12 @@
         border: 1px solid #fde68a;
     }
 
+    .status-uncertain {
+        background: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+    }
+
     .status-processing {
         background: #ecfeff;
         color: #0e7490;
@@ -437,6 +451,12 @@
         background: #fef2f2;
         color: #b91c1c;
         border: 1px solid #fecaca;
+    }
+
+    .status-unavailable {
+        background: #f8fafc;
+        color: #64748b;
+        border: 1px solid #cbd5e1;
     }
 
     .status-pending {
@@ -629,6 +649,14 @@
                 </div>
 
                 <div class="stat-card">
+                    <div class="stat-icon uncertain"><i class="fas fa-circle-question"></i></div>
+                    <div>
+                        <h3>{{ $uncertainCount }}</h3>
+                        <p>Not Enough Evidence</p>
+                    </div>
+                </div>
+
+                <div class="stat-card">
                     <div class="stat-icon pending"><i class="fas fa-clock"></i></div>
                     <div>
                         <h3>{{ $pendingCount }}</h3>
@@ -658,9 +686,11 @@
                             <option value="">All Status</option>
                             <option value="correct">Correct</option>
                             <option value="incorrect">Needs Practice</option>
+                            <option value="uncertain">Not Enough Evidence</option>
                             <option value="pending">Pending</option>
                             <option value="processing">Processing</option>
-                            <option value="failed">Failed</option>
+                            <option value="analysis_failed">Analysis Failed</option>
+                            <option value="unavailable">Unavailable</option>
                         </select>
                     </div>
 
@@ -680,17 +710,7 @@
                 @foreach($recitations as $recitation)
                     @php
                         $analysis = $recitation->analysisResult;
-                        $status = 'pending';
-
-                        if ($analysis) {
-                            if ($analysis->processing_status === 'completed') {
-                                $status = $analysis->correctness === 'correct' ? 'correct' : 'incorrect';
-                            } elseif ($analysis->processing_status === 'processing') {
-                                $status = 'processing';
-                            } elseif ($analysis->processing_status === 'failed') {
-                                $status = 'failed';
-                            }
-                        }
+                        $status = $analysis?->displayOutcomeKey() ?? 'pending';
 
                         $confidence = null;
                         if ($analysis && $analysis->confidence_score !== null) {
@@ -698,9 +718,25 @@
                             $confidence = $raw <= 1 ? round($raw * 100) : round($raw);
                         }
 
-                        $ruleLabel = $recitation->tajweed_rule === 'ikhfa'
-                            ? 'Ikhfa Haqiqi'
-                            : ($recitation->tajweed_rule === 'izhar' ? 'Izhar Halqi' : $recitation->tajweed_rule);
+                        $targetAnalysis = $analysis
+                            ? collect($analysis->detected_errors ?? [])->firstWhere('type', 'target_analysis')
+                            : null;
+                        $evaluatedRules = collect(['ikhfa', 'izhar'])
+                            ->filter(fn (string $candidate): bool => collect(data_get($targetAnalysis, 'targets', []))
+                                ->contains(fn ($target): bool => data_get($target, 'rule') === $candidate))
+                            ->values();
+                        $ruleLabel = $evaluatedRules->count() > 1
+                            ? 'Ikhfa & Izhar'
+                            : ($recitation->tajweed_rule === 'ikhfa'
+                                ? 'Ikhfa Haqiqi'
+                                : ($recitation->tajweed_rule === 'izhar' ? 'Izhar Halqi' : $recitation->tajweed_rule));
+                        $ruleBadgeClass = $evaluatedRules->count() > 1 ? 'combined' : $recitation->tajweed_rule;
+                        $filterRules = $evaluatedRules->isNotEmpty()
+                            ? $evaluatedRules->implode(' ')
+                            : $recitation->tajweed_rule;
+                        $confidenceKind = data_get($analysis, 'classification_status') === 'reference_verified'
+                            ? 'pronunciation'
+                            : 'rule';
 
                         $audioType = 'audio/mpeg';
 
@@ -716,7 +752,7 @@
                     @endphp
 
                     <div class="recitation-item"
-                         data-rule="{{ $recitation->tajweed_rule }}"
+                         data-rules="{{ $filterRules }}"
                          data-status="{{ $status }}"
                          data-created="{{ $recitation->created_at->timestamp }}"
                          data-correctness="{{ $status }}">
@@ -787,7 +823,7 @@
                         <div class="recitation-bottom">
                             <div>
                                 <div class="badges-row">
-                                    <span class="rule-badge {{ $recitation->tajweed_rule }}">
+                                    <span class="rule-badge {{ $ruleBadgeClass }}">
                                         {{ $ruleLabel }}
                                     </span>
 
@@ -800,22 +836,32 @@
                                     @if($status === 'correct')
                                         <span class="status-badge status-correct">
                                             <i class="fas fa-check-circle"></i>
-                                            Correct {{ $confidence !== null ? $confidence . '%' : '' }}
+                                            Correct {{ $confidence !== null ? '· ' . $confidenceKind . ' ' . $confidence . '%' : '' }}
                                         </span>
                                     @elseif($status === 'incorrect')
                                         <span class="status-badge status-incorrect">
                                             <i class="fas fa-exclamation-circle"></i>
-                                            Needs Practice {{ $confidence !== null ? $confidence . '%' : '' }}
+                                            Needs Practice {{ $confidence !== null ? '· ' . $confidenceKind . ' ' . $confidence . '%' : '' }}
+                                        </span>
+                                    @elseif($status === 'uncertain')
+                                        <span class="status-badge status-uncertain">
+                                            <i class="fas fa-circle-question"></i>
+                                            Not Enough Evidence {{ $confidence !== null ? '· ' . $confidenceKind . ' ' . $confidence . '%' : '' }}
                                         </span>
                                     @elseif($status === 'processing')
                                         <span class="status-badge status-processing">
                                             <i class="fas fa-spinner fa-spin"></i>
                                             Analyzing
                                         </span>
-                                    @elseif($status === 'failed')
+                                    @elseif($status === 'analysis_failed')
                                         <span class="status-badge status-failed">
                                             <i class="fas fa-times-circle"></i>
-                                            Failed
+                                            Analysis Failed
+                                        </span>
+                                    @elseif($status === 'unavailable')
+                                        <span class="status-badge status-unavailable">
+                                            <i class="fas fa-circle-minus"></i>
+                                            Unavailable
                                         </span>
                                     @else
                                         <span class="status-badge status-pending">
@@ -834,7 +880,7 @@
                             </div>
 
                             <div class="result-action">
-                                @if($analysis && $analysis->processing_status === 'completed')
+                                @if($analysis && !in_array($status, ['pending', 'processing'], true))
                                     <a href="{{ route('tajweed.result', $recitation->id) }}" class="btn btn-main">
                                         <i class="fas fa-chart-line me-2"></i>View Analysis
                                     </a>
@@ -965,7 +1011,8 @@
             const sortValue = sortFilter ? sortFilter.value : 'newest';
 
             items.forEach(item => {
-                const matchRule = !ruleValue || item.dataset.rule === ruleValue;
+                const itemRules = (item.dataset.rules || '').split(/\s+/).filter(Boolean);
+                const matchRule = !ruleValue || itemRules.includes(ruleValue);
                 const matchStatus = !statusValue || item.dataset.status === statusValue;
 
                 item.style.display = matchRule && matchStatus ? '' : 'none';

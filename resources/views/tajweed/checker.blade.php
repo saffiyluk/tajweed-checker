@@ -40,6 +40,90 @@
         ['arabic' => 'مِن تَحْتِهَا الْأَنْهَارُ', 'translation' => 'beneath which rivers flow'],
         ['arabic' => 'وَأَنْزَلْنَا', 'translation' => 'and We sent down'],
     ];
+    $checkerRule = request('rule');
+    if (!in_array($checkerRule, ['ikhfa', 'izhar'], true)) {
+        $checkerRule = 'ikhfa';
+
+        if ($selectedAyah) {
+            $chars = preg_split('//u', $selectedAyah, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            $ikhfaLettersForSubmit = array_flip([
+                "\u{062A}", "\u{062B}", "\u{062C}", "\u{062F}", "\u{0630}",
+                "\u{0632}", "\u{0633}", "\u{0634}", "\u{0635}", "\u{0636}",
+                "\u{0637}", "\u{0638}", "\u{0641}", "\u{0642}", "\u{0643}",
+            ]);
+            $izharLettersForSubmit = array_flip([
+                "\u{0621}", "\u{0627}", "\u{0647}", "\u{0639}", "\u{062D}", "\u{063A}", "\u{062E}",
+            ]);
+            $hasIkhfaTarget = false;
+            $hasIzharTarget = false;
+            $count = count($chars);
+            $normalizeLetter = fn(string $letter): string => strtr($letter, [
+                "\u{0623}" => "\u{0621}",
+                "\u{0625}" => "\u{0621}",
+                "\u{0622}" => "\u{0621}",
+                "\u{0624}" => "\u{0621}",
+                "\u{0626}" => "\u{0621}",
+                "\u{0671}" => "\u{0627}",
+            ]);
+            $isArabicLetter = fn(string $char): bool => (bool) preg_match('/[\x{0621}-\x{064A}\x{0671}]/u', $char);
+            $isArabicMark = fn(string $char): bool => (bool) preg_match('/[\x{0610}-\x{061A}\x{064B}-\x{065F}\x{0670}\x{06D6}-\x{06ED}\x{08D3}-\x{08FF}\x{0640}]/u', $char);
+
+            foreach ($chars as $index => $char) {
+                $isTanween = (bool) preg_match('/[\x{064B}\x{064C}\x{064D}]/u', $char);
+                $isNoon = $normalizeLetter($char) === "\u{0646}";
+                $hasSukun = false;
+                $markEnd = $index;
+
+                if ($isNoon) {
+                    for ($i = $index + 1; $i < $count && $isArabicMark($chars[$i]); $i++) {
+                        $markEnd = $i;
+                        $hasSukun = $hasSukun || in_array($chars[$i], ["\u{0652}", "\u{06E1}"], true);
+                    }
+                }
+
+                if (!$isTanween && (!$isNoon || !$hasSukun)) {
+                    continue;
+                }
+
+                $nextLetter = null;
+                $nextLetterIndex = null;
+                for ($i = $markEnd + 1; $i < $count; $i++) {
+                    if ($isArabicLetter($chars[$i])) {
+                        $nextLetter = $normalizeLetter($chars[$i]);
+                        $nextLetterIndex = $i;
+                        break;
+                    }
+                }
+
+                if ($nextLetter === null) {
+                    continue;
+                }
+
+                if ($isTanween
+                    && $char === "\u{064B}"
+                    && $nextLetterIndex === $markEnd + 1
+                    && in_array($chars[$nextLetterIndex], ["\u{0627}", "\u{0649}"], true)) {
+                    $nextLetter = null;
+
+                    for ($i = $nextLetterIndex + 1; $i < $count; $i++) {
+                        if ($isArabicLetter($chars[$i])) {
+                            $nextLetter = $normalizeLetter($chars[$i]);
+                            break;
+                        }
+                    }
+                }
+
+                if ($nextLetter === null) {
+                    continue;
+                }
+
+                $hasIkhfaTarget = $hasIkhfaTarget || isset($ikhfaLettersForSubmit[$nextLetter]);
+                $hasIzharTarget = $hasIzharTarget || isset($izharLettersForSubmit[$nextLetter]);
+            }
+
+            $checkerRule = $hasIkhfaTarget ? 'ikhfa' : ($hasIzharTarget ? 'izhar' : 'ikhfa');
+        }
+    }
 @endphp
 
 <div class="practice-page">
@@ -70,6 +154,14 @@
         @if(session('error'))
             <div class="alert alert-danger alert-dismissible fade show clean-alert">
                 <i class="fas fa-exclamation-circle me-2"></i>{{ session('error') }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        @endif
+
+        @if($errors->any())
+            <div class="alert alert-danger alert-dismissible fade show clean-alert">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                {{ $errors->first() }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
             </div>
         @endif
@@ -107,7 +199,7 @@
                     @else
                         <h2>No ayah selected</h2>
                         <p class="muted-text">
-                            You can still upload or record your recitation, but selecting an ayah first gives better context for analysis.
+                            Select the ayah you want to read first so the analysis can compare your recitation against the correct reference text.
                         </p>
 
                         <a href="{{ route('recite.quran') }}" class="btn btn-primary-custom w-100">
@@ -140,56 +232,19 @@
                                 <i class="fas fa-microphone me-2"></i>
                                 Combined Submission
                             </span>
-                            <h2>Upload or record one ayah</h2>
+                            <h2>Record one ayah</h2>
                         </div>
                     </div>
 
-                    <ul class="clean-tabs nav nav-pills mb-4" id="myTab" role="tablist">
-                        <li class="nav-item flex-fill" role="presentation">
-                            <button class="nav-link active w-100" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload" type="button">
-                                <i class="fas fa-cloud-upload-alt me-2"></i>Upload File
-                            </button>
-                        </li>
-                        <li class="nav-item flex-fill" role="presentation">
-                            <button class="nav-link w-100" id="record-tab" data-bs-toggle="tab" data-bs-target="#record" type="button">
-                                <i class="fas fa-microphone me-2"></i>Record Audio
-                            </button>
-                        </li>
-                    </ul>
-
                     <div class="tab-content">
-                        <div class="tab-pane fade show active" id="upload" role="tabpanel">
-                            <form id="uploadForm" method="POST" action="{{ route('tajweed.upload') }}" enctype="multipart/form-data">
-                                @csrf
-                                <input type="hidden" name="tajweed_rule" value="ikhfa">
-                                <input type="hidden" name="browser_transcript" id="browserTranscript" value="">
+                        @unless($selectedAyah)
+                            <div class="alert alert-warning clean-alert">
+                                <i class="fas fa-circle-info me-2"></i>
+                                Select an ayah from the Quran page before submitting audio for analysis.
+                            </div>
+                        @endunless
 
-                                @if($selectedAyah)
-                                    <input type="hidden" name="selected_ayah" value="{{ $selectedAyah }}">
-                                @endif
-
-                                <label for="audioFile" class="upload-zone">
-                                    <div class="upload-icon">
-                                        <i class="fas fa-cloud-upload-alt"></i>
-                                    </div>
-
-                                    <div>
-                                        <h5>Choose your audio file</h5>
-                                        <p>MP3, WAV, or WEBM. Maximum 10MB.</p>
-                                    </div>
-
-                                    <input type="file" name="audio" accept="audio/*" class="d-none" required id="audioFile">
-                                </label>
-
-                                <div id="fileName" class="file-name"></div>
-
-                                <button type="submit" class="btn btn-primary-custom w-100 mt-3" id="submitUpload">
-                                    <i class="fas fa-paper-plane me-2"></i>Submit for Analysis
-                                </button>
-                            </form>
-                        </div>
-
-                        <div class="tab-pane fade" id="record" role="tabpanel">
+                        <div class="tab-pane fade show active" id="record" role="tabpanel">
                             <div class="record-panel">
                                 <div class="timer-card">
                                     <span id="timer" class="timer">00:00</span>
@@ -201,7 +256,7 @@
                                 </div>
 
                                 <div class="record-actions">
-                                    <button type="button" class="btn btn-record-start" id="startBtn">
+                                    <button type="button" class="btn btn-record-start" id="startBtn" @disabled(!$selectedAyah)>
                                         <i class="fas fa-microphone me-2"></i>Start
                                     </button>
 
@@ -944,19 +999,9 @@
             icon.className = 'fas fa-play';
         }
     }
-    
-    // File upload preview
-    document.getElementById('audioFile')?.addEventListener('change', function(e) {
-        const fileName = document.getElementById('fileName');
-        if (this.files.length > 0) {
-            fileName.textContent = `Selected: ${this.files[0].name}`;
-        } else {
-            fileName.textContent = '';
-        }
-    });
-    
     // Recording functionality
     document.addEventListener('DOMContentLoaded', function() {
+        const hasSelectedAyah = @json((bool) $selectedAyah);
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const pauseBtn = document.getElementById('pauseBtn');
@@ -1112,6 +1157,11 @@
         
         // Start recording
         startBtn?.addEventListener('click', async function() {
+            if (!hasSelectedAyah) {
+                alert('Please select an ayah from the Quran page before recording.');
+                return;
+            }
+
             try {
                 // Request microphone access
                 audioStream = await navigator.mediaDevices.getUserMedia({ 
@@ -1138,6 +1188,7 @@
                 visualizer.style.display = 'block';
                 drawWaveform();
                 
+                // ===== REPORT SCREENSHOT START: Section 4.3.3 - Browser Audio Recording =====
                 // Create media recorder
                 const preferredMimeTypes = [
                     'audio/webm;codecs=opus',
@@ -1182,6 +1233,7 @@
                 
                 // Start recording
                 mediaRecorder.start();
+                // ===== REPORT SCREENSHOT END: Section 4.3.3 - Browser Audio Recording =====
                 isRecording = true;
                 browserTranscript = '';
                 visibleBrowserTranscript = '';
@@ -1299,6 +1351,11 @@
         
         // Submit recording - FIXED VERSION
         submitRecording?.addEventListener('click', function() {
+            if (!hasSelectedAyah) {
+                alert('Please select an ayah from the Quran page before submitting.');
+                return;
+            }
+
             if (audioChunks.length === 0) {
                 alert('No recording to submit. Please record first.');
                 return;
@@ -1337,7 +1394,7 @@
                 const ruleInput = document.createElement('input');
                 ruleInput.type = 'hidden';
                 ruleInput.name = 'tajweed_rule';
-                ruleInput.value = 'ikhfa'; // Change to 'izhar' for Izhar Halqi page
+                ruleInput.value = @json($checkerRule);
                 form.appendChild(ruleInput);
 
                 const transcriptInput = document.createElement('input');
@@ -1352,6 +1409,23 @@
                     selectedAyahInput.name = 'selected_ayah';
                     selectedAyahInput.value = @json($selectedAyah);
                     form.appendChild(selectedAyahInput);
+                @endif
+
+                @if($sourceSurah && $sourceAyah)
+                    // Preserve Quran coordinates so the backend can use the
+                    // bundled canonical Uthmani reference instead of relying
+                    // on whichever annotation style the page API returned.
+                    const sourceSurahInput = document.createElement('input');
+                    sourceSurahInput.type = 'hidden';
+                    sourceSurahInput.name = 'source_surah';
+                    sourceSurahInput.value = @json((int) $sourceSurah);
+                    form.appendChild(sourceSurahInput);
+
+                    const sourceAyahInput = document.createElement('input');
+                    sourceAyahInput.type = 'hidden';
+                    sourceAyahInput.name = 'source_ayah';
+                    sourceAyahInput.value = @json((int) $sourceAyah);
+                    form.appendChild(sourceAyahInput);
                 @endif
                 
                 // Add audio as base64
@@ -1371,13 +1445,6 @@
                 submitRecording.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Submit Recording';
                 alert('Could not prepare the recording. Please try recording again.');
             };
-        });
-        
-        // Handle form submission
-        document.getElementById('uploadForm')?.addEventListener('submit', function(e) {
-            const submitBtn = document.getElementById('submitUpload');
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Uploading...';
         });
     });
 </script>

@@ -1024,9 +1024,23 @@ document.addEventListener('DOMContentLoaded', function () {
     function renderActions(ayahText, surahNumber, ayahNumber, matches) {
         const encodedAyah = encodeURIComponent(ayahText);
         const baseParams = `ayah=${encodedAyah}&surah=${surahNumber}&ayah_number=${ayahNumber}`;
+        const hasIkhfa = matches.some(m => m.key === 'ikhfa');
+        const hasIzhar = matches.some(m => m.key === 'izhar');
         let actionsHtml = '';
 
-        if (matches.some(m => ['ikhfa', 'izhar'].includes(m.key)) || matches.length === 0) {
+        if (hasIkhfa || matches.length === 0) {
+            actionsHtml += `<a href="{{ route('tajweed.ikhfa-haqiqi') }}?${baseParams}" class="practice-link">
+                <i class="fas fa-volume-up"></i> Practice Ikhfa
+            </a>`;
+        }
+
+        if (hasIzhar || matches.length === 0) {
+            actionsHtml += `<a href="{{ route('tajweed.izhar-halqi') }}?${baseParams}" class="practice-link">
+                <i class="fas fa-microphone-lines"></i> Practice Izhar
+            </a>`;
+        }
+
+        if (hasIkhfa && hasIzhar) {
             actionsHtml += `<a href="{{ route('tajweed.checker') }}?${baseParams}" class="practice-link">
                 <i class="fas fa-wand-magic-sparkles"></i> Check Ikhfa & Izhar
             </a>`;

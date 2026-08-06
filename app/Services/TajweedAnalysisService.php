@@ -19,6 +19,11 @@ class TajweedAnalysisService
 
     public function __construct()
     {
+        if (!config('tajweed.enable_firestore_sync', false)) {
+            Log::info('Firestore sync disabled for Tajweed analysis service');
+            return;
+        }
+
         // Try to initialize Firestore
         try {
             if (config('firebase.credentials') && file_exists(base_path(config('firebase.credentials')))) {
@@ -44,8 +49,7 @@ class TajweedAnalysisService
             $result = $audioRecitation->analysisResult;
             $result->update(['processing_status' => 'processing']);
 
-            // Get audio from Firebase (in production, use signed URL or stream)
-            // For now, we'll use mock analysis
+            // This legacy path deliberately fails closed unless a real backend is wired in.
             $analysisData = $this->performAnalysis($audioRecitation);
 
             // Update analysis result with findings
@@ -55,7 +59,8 @@ class TajweedAnalysisService
                 'feedback_message' => $analysisData['feedback_message'],
                 'detected_errors' => $analysisData['detected_errors'],
                 'suggestions' => $analysisData['suggestions'],
-                'processing_status' => 'completed',
+                'processing_status' => $analysisData['processing_status'] ?? 'completed',
+                'classification_status' => $analysisData['classification_status'] ?? null,
             ]);
 
             Log::info("Tajweed analysis completed for audio {$audioRecitation->id}");
@@ -76,6 +81,8 @@ class TajweedAnalysisService
             $result = $audioRecitation->analysisResult;
             $result->update([
                 'processing_status' => 'failed',
+                'classification_status' => 'failed',
+                'correctness' => null,
                 'feedback_message' => 'Analysis failed. Please try again.',
             ]);
         }
@@ -121,90 +128,48 @@ class TajweedAnalysisService
     }
 
     /**
-     * Perform actual ML analysis
-     * Currently uses mock data - replace with actual ML API call
-     * 
-     * @param AudioRecitation $audioRecitation
-     * @return array
+     * Fail closed when the legacy service path is enabled.
+     *
+     * Real inference is performed by the local Python pipeline in
+     * TajweedController. This service previously returned a random correct or
+     * incorrect result, which could silently overwrite evidence with fabricated
+     * analysis whenever TAJWEED_ENABLE_SERVICE_ANALYSIS was enabled.
      */
     protected function performAnalysis(AudioRecitation $audioRecitation): array
     {
-        // TODO: Replace with actual ML service call
-        // This is a mock implementation for demonstration
+        Log::warning('Legacy Tajweed analysis service invoked; returning an explicit failed result instead of mock data', [
+            'audio_id' => $audioRecitation->id,
+            'rule' => $audioRecitation->tajweed_rule,
+        ]);
 
-        $rule = $audioRecitation->tajweed_rule;
-
-        // Example mock responses
-        $mockResponses = [
-            'ikhfa' => [
-                'correct' => [
-                    'correctness' => 'correct',
-                    'confidence_score' => 0.92,
-                    'feedback_message' => 'Excellent! Your Ikhfa\' Haqiqi pronunciation is correct. You demonstrated proper nasalization (ghunnah) for 2 harakah.',
-                    'detected_errors' => [],
-                    'suggestions' => ['Continue practicing to maintain consistency', 'Record more examples to build confidence'],
-                ],
-                'incorrect' => [
-                    'correctness' => 'incorrect',
-                    'confidence_score' => 0.78,
-                    'feedback_message' => 'Your pronunciation shows signs of incorrect Ikhfa\'. The nasalization appears too strong, making it sound like Idgham.',
-                    'detected_errors' => [
-                        ['error' => 'Over-nasalization', 'type' => 'excessive_ghunnah'],
-                        ['error' => 'Weak throat articulation', 'type' => 'poor_articulation'],
-                    ],
-                    'suggestions' => [
-                        'Reduce nasalization to approximately 2 harakah',
-                        'Focus on clear pronunciation of the Ikhfa letter',
-                        'Listen to reference recordings and compare',
-                    ],
-                ],
-            ],
-            'izhar' => [
-                'correct' => [
-                    'correctness' => 'correct',
-                    'confidence_score' => 0.88,
-                    'feedback_message' => 'Perfect! Your Izhar Halqi pronunciation is clear and correct. No nasalization detected, with proper throat articulation.',
-                    'detected_errors' => [],
-                    'suggestions' => ['Maintain this level of clarity', 'Practice with different throat letters'],
-                ],
-                'incorrect' => [
-                    'correctness' => 'incorrect',
-                    'confidence_score' => 0.65,
-                    'feedback_message' => 'Your pronunciation needs improvement. Unwanted nasalization was detected in the Izhar position.',
-                    'detected_errors' => [
-                        ['error' => 'Nasalization present', 'type' => 'unwanted_ghunnah'],
-                        ['error' => 'Unclear throat sound', 'type' => 'poor_clarity'],
-                    ],
-                    'suggestions' => [
-                        'Remove nasalization - Izhar should have NO ghunnah',
-                        'Articulate throat letters more clearly',
-                        'Practice isolated throat letter sounds',
-                    ],
-                ],
-            ],
-        ];
-
-        // Randomly select correct or incorrect for demo
-        $isCorrect = rand(0, 1) === 1;
-        $responseType = $isCorrect ? 'correct' : 'incorrect';
-
-        return $mockResponses[$rule][$responseType] ?? $this->getDefaultMockResponse($rule);
+        return $this->getUnavailableResponse(
+            $audioRecitation->tajweed_rule,
+            'The legacy analysis service is disabled because it has no trained correctness model.'
+        );
     }
 
     /**
-     * Get default mock response
-     * 
-     * @param string $rule
-     * @return array
+     * Return a deterministic, non-claiming response when an ML backend is not
+     * available. Never convert backend failure into a pronunciation verdict.
      */
-    protected function getDefaultMockResponse(string $rule): array
+    protected function getUnavailableResponse(string $rule, ?string $reason = null): array
     {
+        $reason ??= 'No trained Tajweed correctness backend was available.';
+
         return [
-            'correctness' => 'correct',
-            'confidence_score' => 0.75,
-            'feedback_message' => 'Your ' . ucfirst($rule) . ' pronunciation has been analyzed.',
-            'detected_errors' => [],
-            'suggestions' => ['Record more examples', 'Compare with reference recordings'],
+            'correctness' => null,
+            'confidence_score' => 0,
+            'processing_status' => 'failed',
+            'classification_status' => 'failed',
+            'feedback_message' => $reason . ' Please use the main audio-analysis pipeline and try again.',
+            'detected_errors' => [
+                [
+                    'error' => $reason,
+                    'type' => 'analysis_backend_unavailable',
+                    'rule' => $rule,
+                ],
+            ],
+            'suggestions' => ['Try the analysis again after the trained Python pipeline is available.'],
         ];
     }
 
@@ -269,11 +234,17 @@ class TajweedAnalysisService
             }
 
             Log::warning('ML Service returned error: ' . $response->status());
-            return $this->getDefaultMockResponse($audioRecitation->tajweed_rule);
+            return $this->getUnavailableResponse(
+                $audioRecitation->tajweed_rule,
+                'The configured ML service returned HTTP ' . $response->status() . '.'
+            );
 
         } catch (\Exception $e) {
             Log::error('ML Service call failed: ' . $e->getMessage());
-            return $this->getDefaultMockResponse($audioRecitation->tajweed_rule);
+            return $this->getUnavailableResponse(
+                $audioRecitation->tajweed_rule,
+                'The configured ML service could not be reached.'
+            );
         }
     }
 }

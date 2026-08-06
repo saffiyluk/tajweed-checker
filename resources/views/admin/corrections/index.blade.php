@@ -105,14 +105,22 @@
                         <td>
                             <div>
                                 <span class="badge bg-primary">{{ ucfirst($audio?->tajweed_rule ?? 'unknown') }}</span>
-                                @if($correction->correctness)
-                                    <span class="badge {{ $correction->correctness === 'correct' ? 'bg-success' : 'bg-danger' }}">
-                                        {{ ucfirst($correction->correctness) }}
-                                    </span>
-                                @endif
+                                @php
+                                    $outcomeKey = $correction->displayOutcomeKey();
+                                    $correctnessBadge = match ($outcomeKey) {
+                                        'correct' => ['bg-success', 'Correct'],
+                                        'incorrect' => ['bg-danger', 'Needs Practice'],
+                                        'uncertain' => ['bg-secondary', 'Not Enough Evidence'],
+                                        'analysis_failed' => ['bg-danger', 'Analysis Failed'],
+                                        default => ['bg-secondary', 'Unavailable'],
+                                    };
+                                @endphp
+                                <span class="badge {{ $correctnessBadge[0] }}">
+                                    {{ $correctnessBadge[1] }}
+                                </span>
                             </div>
                             <div class="small text-muted mt-1">
-                                Confidence:
+                                Rule model confidence:
                                 {{ is_null($correction->confidence_score) ? 'N/A' : round($correction->confidence_score) . '%' }}
                             </div>
                             @if($correction->transcribed_text)
@@ -160,6 +168,24 @@
                                         <option value="{{ $value }}" @selected($correction->correction_review_status === $value)>{{ $label }}</option>
                                     @endforeach
                                 </select>
+                                <label class="form-label small mb-1" for="expert_target_label_{{ $correction->id }}">
+                                    Expert pronunciation label
+                                </label>
+                                <select id="expert_target_label_{{ $correction->id }}" name="expert_target_label" class="form-select form-select-sm mb-2">
+                                    <option value="">Select before using for dataset</option>
+                                    @foreach([
+                                        'ikhfa_correct' => 'Ikhfa - correct',
+                                        'ikhfa_weak_ghunnah' => 'Ikhfa - weak/short ghunnah',
+                                        'izhar_correct' => 'Izhar - correct',
+                                        'izhar_with_ghunnah' => 'Izhar - unwanted ghunnah',
+                                        'other' => 'Other / unusable target',
+                                    ] as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('expert_target_label', $correction->expert_target_label) === $value)>
+                                            {{ $label }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <div class="form-text mb-2">Required when status is "Used for Dataset".</div>
                                 <textarea name="correction_admin_note" class="form-control form-control-sm mb-2" rows="2"
                                     placeholder="Admin note">{{ $correction->correction_admin_note }}</textarea>
                                 <button type="submit" class="btn btn-sm btn-primary">

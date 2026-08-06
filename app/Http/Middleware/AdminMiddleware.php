@@ -9,6 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AdminMiddleware
 {
+    // ===== REPORT SCREENSHOT START: Section 4.3.2 - Authentication and Role-Based Access =====
     public function handle(Request $request, Closure $next): Response
     {
         // Check if user is authenticated
@@ -22,4 +23,5 @@ class AdminMiddleware
 
         return $next($request);
     }
+    // ===== REPORT SCREENSHOT END: Section 4.3.2 - Authentication and Role-Based Access =====
 }
